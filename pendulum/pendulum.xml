@@ -1,0 +1,40 @@
+<mujoco model="pendulum">
+  <compiler angle="radian" coordinate="local"/>
+  
+  <option timestep="0.01" gravity="0 0 -9.81"/>
+  
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1=".1 .2 .3" 
+             rgb2=".2 .3 .4" width="300" height="300"/>
+    <material name="grid" texture="grid" texrepeat="8 8" reflectance=".2"/>
+  </asset>
+
+  <worldbody>
+    <geom size="1 1 .02" type="plane" material="grid"/>
+    <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+    
+    <!-- Fixed pivot point -->
+    <body name="pivot" pos="0 0 2">
+      <!-- Pendulum rod -->
+      <body name="pendulum" pos="0 0 -0.5">
+        <joint name="pendulum_joint" type="hinge" axis="1 0 0" 
+               pos="0 0 0.5" limited="false"/>
+        <geom name="rod" type="cylinder" size="0.02 0.5" 
+              rgba="0.8 0.2 0.2 1" pos="0 0 0"/>
+        <!-- Bob at the end -->
+        <geom name="bob" type="sphere" size="0.1" 
+              rgba="0.2 0.8 0.2 1" pos="0 0 -0.5"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="pendulum_motor" joint="pendulum_joint" 
+           gear="1" ctrllimited="true" ctrlrange="-50 50"/>
+  </actuator>
+
+  <sensor>
+    <jointpos name="angle_sensor" joint="pendulum_joint" noise="0.01"/>
+    <jointvel name="velocity_sensor" joint="pendulum_joint" noise="0.05"/>
+  </sensor>
+</mujoco>
