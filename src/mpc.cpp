@@ -39,7 +39,7 @@ MPC::MPC(RobotUtils& robot, int N, double dt)
     std::cout << "MPC initialized with N=" << N_ << ", dt=" << dt_ << std::endl;
 }
 
-/* bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) {
+bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
@@ -109,9 +109,9 @@ MPC::MPC(RobotUtils& robot, int N, double dt)
         u_apply = Eigen::VectorXd::Zero(robot_.nu());
         return false;
     }
-} */
+}
 
-bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) {
+/* bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
@@ -139,7 +139,7 @@ bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) 
         u_apply = Eigen::VectorXd::Zero(robot_.nu());
         return false;
     }
-}
+} */
 
 
 void MPC::reset() {

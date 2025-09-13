@@ -101,7 +101,7 @@ void RobotUtils::step() {
     mj_step(model_, data_);
 }
 
-void RobotUtils::rolloutOneStep(const Eigen::VectorXd& x, const Eigen::VectorXd& u, 
+/* void RobotUtils::rolloutOneStep(const Eigen::VectorXd& x, const Eigen::VectorXd& u, 
                                 Eigen::VectorXd& x_next) {
     if (!model_ || !data_temp_) return;
     
@@ -117,7 +117,31 @@ void RobotUtils::rolloutOneStep(const Eigen::VectorXd& x, const Eigen::VectorXd&
     
     // Restore original state
     mj_copyData(data_, model_, data_temp_);
+} */
+
+void RobotUtils::rolloutOneStep(const Eigen::VectorXd& x, const Eigen::VectorXd& u,
+                               Eigen::VectorXd& x_next) {
+    if (!model_ || !data_temp_) return;
+    
+    // Use separate data for rollout predictions
+    mj_copyData(data_temp_, model_, data_); // Save current state
+    
+    // Set state in temporary data
+    unpackStateToData(x, data_temp_);
+    unpackControlToData(u, data_temp_);
+    
+    // CRITICAL: Recompute contacts after manual state setting
+    mj_forward(model_, data_temp_);
+    
+    // Step forward in temporary data
+    mj_step(model_, data_temp_);
+    
+    // Extract result from temporary data
+    packStateFromData(x_next, data_temp_);
+    
+    // Don't restore - let main simulation continue naturally
 }
+
 
 void RobotUtils::linearizeDynamicsFD(const Eigen::VectorXd& x, const Eigen::VectorXd& u,
                                      Eigen::MatrixXd& A, Eigen::MatrixXd& B,
@@ -382,8 +406,11 @@ void RobotUtils::initializeStandingPose() {
     }
     
     // Improve numerical stability
-    model_->opt.solver = mjSOL_PGS;         // Use more stable PGS solver
-    model_->opt.iterations = 200;           // More solver iterations
+    // model_->opt.solver = mjSOL_PGS;         // Use more stable PGS solver
+    model_->opt.cone = mjCONE_PYRAMIDAL;    // Friction cone
+    model_->opt.jacobian = mjJAC_SPARSE;    // Sparse Jacobian
+    model_->opt.solver = mjSOL_NEWTON;      // Newton solver for hard contacts
+    model_->opt.iterations = 500;           // More solver iterations
     model_->opt.tolerance = 1e-6;           // Tighter tolerance
     
     // Forward kinematics to compute dependent quantities
@@ -647,4 +674,50 @@ void RobotUtils::diagnoseContactForces() const {
     std::cout << "Total vertical force: " << total_vertical_force << "N" << std::endl;
     std::cout << "Required force: " << required_force << "N" << std::endl;
     std::cout << "Force ratio: " << (total_vertical_force / required_force) << std::endl;
+}
+
+void RobotUtils::setGravity(double gx, double gy, double gz) {
+    if (model_) {
+        model_->opt.gravity[0] = gx;  // X gravity
+        model_->opt.gravity[1] = gy;  // Y gravity  
+        model_->opt.gravity[2] = gz;  // Z gravity
+        std::cout << "Set gravity to: (" << gx << "," << gy << "," << gz << ")m/s²" << std::endl;
+    }
+}
+
+void RobotUtils::unpackStateToData(const Eigen::VectorXd& x, mjData* target_data) {
+    // Unpack state directly to specified data
+    for (int i = 0; i < model_->nq; ++i) {
+        target_data->qpos[i] = x(i);
+    }
+    for (int i = 0; i < model_->nv; ++i) {
+        target_data->qvel[i] = x(model_->nq + i);
+    }
+}
+
+void RobotUtils::unpackControlToData(const Eigen::VectorXd& u, mjData* target_data) {
+    // Unpack control directly to specified data
+    for (int i = 0; i < model_->nu; ++i) {
+        target_data->ctrl[i] = u(i);
+    }
+}
+
+void RobotUtils::packStateFromData(Eigen::VectorXd& x, mjData* source_data) const {
+    // Pack state from specified data
+    x.resize(nx_);
+    for (int i = 0; i < model_->nq; ++i) {
+        x(i) = source_data->qpos[i];
+    }
+    for (int i = 0; i < model_->nv; ++i) {
+        x(model_->nq + i) = source_data->qvel[i];
+    }
+}
+
+void RobotUtils::scaleRobotMass(double scale_factor) {
+    if (model_) {
+        for (int i = 0; i < model_->nbody; ++i) {
+            model_->body_mass[i] *= scale_factor;
+        }
+        std::cout << "Scaled robot mass by factor: " << scale_factor << std::endl;
+    }
 }

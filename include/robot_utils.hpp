@@ -81,6 +81,10 @@ public:
 
     // EXTRAS
     void diagnoseContactForces() const;
+    mjModel* model() const { return model_; }
+    mjData* data() const { return data_; }
+    void setGravity(double gx = 0.0, double gy = 0.0, double gz = 0.0);
+    void scaleRobotMass(double scale_factor);
 
 private:
     // MuJoCo model and data
@@ -112,4 +116,10 @@ private:
     void unpackState(const Eigen::VectorXd& x);
     void packControl(Eigen::VectorXd& u) const;
     void unpackControl(const Eigen::VectorXd& u);
+
+    // EXTRAS
+    void unpackStateToData(const Eigen::VectorXd& x, mjData* target_data);
+    void unpackControlToData(const Eigen::VectorXd& u, mjData* target_data);  
+    void packStateFromData(Eigen::VectorXd& x, mjData* source_data) const;
+
 };

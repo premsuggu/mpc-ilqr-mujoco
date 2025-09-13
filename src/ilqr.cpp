@@ -43,10 +43,6 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt)
     std::cout << "iLQR initialized with horizon N=" << N_ << ", dt=" << dt_ << std::endl;
 }
 
-// (Removed standalone iteration helper; logic is now directly inside solve)
-
-// Removed legacy initializeNominal (unused)
-
 void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
                                   const std::vector<Eigen::VectorXd>& x_ref,
                                   const std::vector<Eigen::VectorXd>& u_ref,

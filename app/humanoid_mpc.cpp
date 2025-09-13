@@ -10,7 +10,7 @@ int main() {
     // Configuration (matching paper with improved stability)
     const double dt = 0.02;          // 50Hz MPC (paper)
     const int N = 25;                // 0.5s horizon (paper)
-    const int sim_steps = 100;       // 4 seconds simulation
+    const int sim_steps = 50;       // 4 seconds simulation
     
     // Use smaller physics timestep for stability
     const double physics_dt = 0.02; 
@@ -25,6 +25,9 @@ int main() {
     // Set paper's key parameters
     robot.setContactImpratio(100.0);  // Paper's approach
     robot.setTimeStep(physics_dt);    // Use fine physics timestep
+    // ZERO GRAVITY TEST - ELIMINATE GRAVITY COMPLETELY
+    robot.setGravity(0.0, 0.0, -0.0025);  // No gravity in any direction
+    // robot.scaleRobotMass(0.3);  // Now robot weighs ~5kg instead of 51kg
     
     // Initialize robot to stable standing pose
     robot.initializeStandingPose();
@@ -36,42 +39,44 @@ int main() {
     Eigen::MatrixXd R = Eigen::MatrixXd::Identity(robot.nu(), robot.nu());
     Eigen::MatrixXd Qf = Eigen::MatrixXd::Identity(robot.nx(), robot.nx());
     
-    // BASE POSITION: Set to ZERO (don't track absolute position)
-    Q(0,0) = 50.0;   // X position - let it drift
-    Q(1,1) = 50.0;   // Y position - let it drift  
-    Q(2,2) = 1000.0;   // Z position - CRITICAL: don't fight gravity directly
-    
-    // BASE ORIENTATION: Moderate tracking (keep upright)
-    Q(3,3) = 50.0;  // qw (scalar part of quaternion)
-    Q(4,4) = 50.0;  // qx (roll - very important for balance)  
-    Q(5,5) = 50.0;  // qy (pitch - very important for balance)
-    Q(6,6) = 50.0;   // qz (yaw - less critical)
+    // ZERO GRAVITY OPTIMIZED COST WEIGHTS
+    Q(0,0) = 10.0;   // X position - very loose tracking
+    Q(1,1) = 10.0;   // Y position - very loose tracking  
+    Q(2,2) = 50.0;   // Z position 
+
+    // BASE ORIENTATION: Keep moderate
+    Q(3,3) = 100.0;  // qw - more important in zero-g
+    Q(4,4) = 100.0;  // qx (roll)
+    Q(5,5) = 100.0;  // qy (pitch) 
+    Q(6,6) = 50.0;   // qz (yaw)
 
     for (int i = 7; i < robot.nq(); ++i) {
-        Q(i, i) = 10.0;  // Joint positions
+        Q(i, i) = 50.0;  // Joint positions - increased for stability
     }
-    // VELOCITIES: This is where stability comes from!
+
+    // VELOCITIES: Critical for zero-gravity stability
     int nq = robot.nq();
-    Q(nq + 0, nq + 0) = 10.0;      // X velocity damping
-    Q(nq + 1, nq + 1) = 10.0;      // Y velocity damping  
-    Q(nq + 2, nq + 2) = 500.0;    // Z velocity damping - CRITICAL for height stability
-    Q(nq + 3, nq + 3) = 10.0;     // Angular velocity damping (roll)
-    Q(nq + 4, nq + 4) = 10.0;     // Angular velocity damping (pitch)
-    Q(nq + 5, nq + 5) = 10.0;      // Angular velocity damping (yaw)
+    Q(nq + 0, nq + 0) = 100.0;  // X velocity damping
+    Q(nq + 1, nq + 1) = 100.0;  // Y velocity damping  
+    Q(nq + 2, nq + 2) = 300.0;  // Z velocity 
+    Q(nq + 3, nq + 3) = 50.0;   // Angular velocity damping
+    Q(nq + 4, nq + 4) = 50.0;   
+    Q(nq + 5, nq + 5) = 50.0;   
 
-    // Joint velocities: Strong damping for smooth motion
+    // Joint velocities: Very important for smooth motion
     for (int i = nq + 6; i < robot.nx(); ++i) {
-        Q(i, i) = 0.1;  // Joint velocity damping
+        Q(i, i) = 100.0;  // INCREASED joint velocity damping
     }
 
-    R *= 0.001;        // Control effort  
+    R *= 0.1;         // INCREASED control effort penalty 
     Qf = Q*10.0;      // Terminal
+    Qf(nq + 2, nq + 2)  *= 10.0;
     
     robot.setCostWeights(Q, R, Qf);
     
     // Set constraint weights for joint and control limits
-    robot.setConstraintWeights(1e3,      // w_joint_limits 
-                              1e3);      // w_control_limits
+    robot.setConstraintWeights(0,      // w_joint_limits 
+                              0);      // w_control_limits
     
     // Load reference trajectories
     if (!robot.loadReferences("/home/prem/mujoco_mpc/data/q_standing.csv", "/home/prem/mujoco_mpc/data/v_standing.csv")) {
@@ -122,13 +127,19 @@ int main() {
         }
         
         // Apply control and sub-step physics for stability
+        /* robot.setControl(u_apply);
+        for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
+            robot.step();
+        }  */
         robot.setControl(u_apply);
+        // CRITICAL: Recompute contacts after control change
+        mj_forward(robot.model(), robot.data());
         for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
             robot.step();
         }
         
         // Enhanced progress reporting every 10 steps
-        if (step % 25 == 0 || step == sim_steps - 1) {
+        if (step % 1 == 0 || step == sim_steps - 1) {
             // Get MPC solve cost
             double current_cost = mpc.getLastSolveCost();
             
@@ -144,10 +155,9 @@ int main() {
                       << " | Cost: " << current_cost
                       << " | (X,Y,Z): " << "(" << x_position<< "," << y_position << "," << z_position << ")" << "m"
                       << " | Control range: [" << u_min << ", " << u_max << "]"
-                      << " | Imp"
                       << std::endl;
             
-            robot.diagnoseContactForces();
+            // robot.diagnoseContactForces();
         }
     }
     
@@ -161,7 +171,7 @@ int main() {
     std::cout << "Average step time: " << duration.count() / (double)sim_steps << " ms\n";
     
     // Save results
-    std::cout << "Applied optimal trajectories saved to: /home/prem/mujoco_mpc/results/q_optimal.csv and u_optimal.csv\n";
+    // std::cout << "Applied optimal trajectories saved to: /home/prem/mujoco_mpc/results/q_optimal.csv and u_optimal.csv\n";
     
     return 0;
 }

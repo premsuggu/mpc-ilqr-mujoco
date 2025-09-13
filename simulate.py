@@ -38,6 +38,8 @@ def main():
     model = mujoco.MjModel.from_xml_path(model_path)
     data = mujoco.MjData(model)
     
+    model.opt.gravity = np.array([0, 0, 0])
+    
     print(f"Model loaded: nq={model.nq}, nv={model.nv}, nu={model.nu}")
     
     # Load optimal trajectory from MPC
