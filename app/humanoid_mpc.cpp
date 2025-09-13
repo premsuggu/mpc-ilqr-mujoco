@@ -8,12 +8,12 @@
 
 int main() {
     // Configuration (matching paper with improved stability)
-    const double dt = 0.02;          // 50Hz MPC (paper)
+    const double dt = 0.05;          // 50Hz MPC (paper)
     const int N = 25;                // 0.5s horizon (paper)
     const int sim_steps = 50;       // 4 seconds simulation
     
     // Use smaller physics timestep for stability
-    const double physics_dt = 0.02; 
+    const double physics_dt = 0.05; 
     
     // Initialize robot
     RobotUtils robot;
@@ -23,7 +23,7 @@ int main() {
     }
     
     // Set paper's key parameters
-    robot.setContactImpratio(100.0);  // Paper's approach
+    robot.setContactImpratio(500.0);  // Paper's approach
     robot.setTimeStep(physics_dt);    // Use fine physics timestep
     // ZERO GRAVITY TEST - ELIMINATE GRAVITY COMPLETELY
     robot.setGravity(0.0, 0.0, -0.0025);  // No gravity in any direction
