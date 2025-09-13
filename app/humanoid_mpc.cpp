@@ -97,14 +97,38 @@ int main() {
     int physics_steps_per_mpc = (int)(dt / physics_dt);
     
     for (int step = 0; step < sim_steps; ++step) {
+        // ENHANCED NUMERICAL STABILITY MONITORING
+        // Check system stability before proceeding
+        if (!robot.checkNumericalStability()) {
+            std::cout << "INSTABILITY DETECTED at step " << step << "!" << std::endl;
+            robot.logNumericalState();
+            
+            // Attempt recovery
+            if (robot.recoverFromInstability()) {
+                std::cout << "Recovery successful, continuing simulation..." << std::endl;
+            } else {
+                std::cout << "Recovery failed, terminating simulation." << std::endl;
+                break;
+            }
+        }
+        
         // Get current state (from simulation - later from sensors)
         Eigen::VectorXd x_current(robot.nx());
         robot.getState(x_current);
         
         // Check for NaN values in state
         if (!x_current.allFinite()) {
-            std::cerr << "NaN detected in state at step " << step << ", breaking simulation" << std::endl;
-            break;
+            std::cerr << "NaN detected in state at step " << step << ", attempting recovery..." << std::endl;
+            
+            if (robot.recoverFromInstability()) {
+                robot.getState(x_current);  // Get recovered state
+                if (!x_current.allFinite()) {
+                    std::cerr << "Recovery failed, breaking simulation" << std::endl;
+                    break;
+                }
+            } else {
+                break;
+            }
         }
         
         // MPC step
@@ -112,10 +136,12 @@ int main() {
         bool success = mpc.stepOnce(x_current, u_apply);
         
         if (!success) {
-            std::cerr << "MPC failed at step " << step << "\n";
+            std::cerr << "MPC failed at step " << step << std::endl;
             // Continue with zero control instead of breaking
             u_apply.setZero();
             if (step > 10) {  // Allow some initial failures
+                // Log state before potential termination
+                robot.logNumericalState();
                 break;
             }
         }
@@ -127,14 +153,19 @@ int main() {
         }
         
         // Apply control and sub-step physics for stability
-        /* robot.setControl(u_apply);
-        for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
-            robot.step();
-        }  */
         robot.setControl(u_apply);
         // CRITICAL: Recompute contacts after control change
         mj_forward(robot.model(), robot.data());
+        
+        // Enhanced sub-stepping with stability monitoring
         for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
+            // Check stability before each physics step
+            if (sub_step > 0 && !robot.checkNumericalStability()) {
+                std::cout << "Instability detected during sub-step " << sub_step 
+                          << " of step " << step << std::endl;
+                robot.recoverFromInstability();
+            }
+            
             robot.step();
         }
         
@@ -154,10 +185,20 @@ int main() {
             std::cout << "Step " << step << "/" << sim_steps 
                       << " | Cost: " << current_cost
                       << " | (X,Y,Z): " << "(" << x_position<< "," << y_position << "," << z_position << ")" << "m"
-                      << " | Control range: [" << u_min << ", " << u_max << "]"
-                      << std::endl;
+                      << " | Control range: [" << u_min << ", " << u_max << "]";
             
-            // robot.diagnoseContactForces();
+            // Add stability indicator
+            if (robot.checkNumericalStability()) {
+                std::cout << " | Status: STABLE";
+            } else {
+                std::cout << " | Status: UNSTABLE";
+            }
+            std::cout << std::endl;
+            
+            // Log detailed diagnostics every 10 steps or if unstable
+            if (step % 10 == 0 || !robot.checkNumericalStability()) {
+                robot.logNumericalState();
+            }
         }
     }
     

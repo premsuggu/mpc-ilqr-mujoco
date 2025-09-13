@@ -105,9 +105,47 @@ void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
 }
 
 void iLQR::forwardRolloutNominal() {
-    // Roll out trajectory using current controls
+    // Roll out trajectory using current controls with numerical stability checks
     for (int t = 0; t < N_; ++t) {
+        // Check for NaN/Inf in current state and control before rollout
+        if (!xbar_[t].allFinite()) {
+            std::cout << "WARNING: Non-finite state detected at timestep " << t 
+                      << " before rollout. Clamping to finite values." << std::endl;
+            // Clamp non-finite values to reasonable bounds
+            for (int i = 0; i < xbar_[t].size(); ++i) {
+                if (!std::isfinite(xbar_[t](i))) {
+                    xbar_[t](i) = 0.0;  // Reset to zero for non-finite values
+                }
+            }
+        }
+        
+        if (!ubar_[t].allFinite()) {
+            std::cout << "WARNING: Non-finite control detected at timestep " << t 
+                      << " before rollout. Clamping to zero." << std::endl;
+            ubar_[t].setZero();
+        }
+        
+        // Store state before rollout for diagnostics
+        Eigen::VectorXd x_before = xbar_[t];
+        
         robot_.rolloutOneStep(xbar_[t], ubar_[t], xbar_[t + 1]);
+        
+        // Check for NaN/Inf in resulting state after rollout
+        if (!xbar_[t + 1].allFinite()) {
+            std::cout << "WARNING: Non-finite state generated at timestep " << t + 1 
+                      << " after rollout. This indicates physics instability." << std::endl;
+            std::cout << "  State before: " << x_before.transpose().head(10) << "..." << std::endl;
+            std::cout << "  Control: " << ubar_[t].transpose().head(5) << "..." << std::endl;
+            std::cout << "  Problematic state: " << xbar_[t + 1].transpose().head(10) << "..." << std::endl;
+            
+            // Emergency fallback: use previous state with zero velocity
+            xbar_[t + 1] = x_before;
+            // Zero out velocities (second half of state vector)
+            int nq = robot_.nq();
+            for (int i = nq; i < xbar_[t + 1].size(); ++i) {
+                xbar_[t + 1](i) = 0.0;
+            }
+        }
     }
 }
 
@@ -185,11 +223,36 @@ void iLQR::backwardPass() {
     VxN_ = lx_[N_];   // Terminal cost gradient
     VxxN_ = lxx_[N_]; // Terminal cost Hessian
     
+    // Check terminal conditions for numerical issues
+    if (!VxN_.allFinite() || !VxxN_.allFinite()) {
+        std::cout << "WARNING: Non-finite terminal cost derivatives detected. Using regularized values." << std::endl;
+        VxN_.setZero();
+        VxxN_ = Eigen::MatrixXd::Identity(robot_.nx(), robot_.nx()) * 1e-3;
+    }
+    
     // Backward recursion starts with terminal cost derivatives
     Eigen::VectorXd Vx = VxN_;
     Eigen::MatrixXd Vxx = VxxN_;
     
     for (int t = N_ - 1; t >= 0; --t) {
+        // Check linearization matrices for numerical issues
+        if (!A_[t].allFinite() || !B_[t].allFinite()) {
+            std::cout << "WARNING: Non-finite linearization matrices at timestep " << t 
+                      << ". Using identity/zero approximation." << std::endl;
+            A_[t] = Eigen::MatrixXd::Identity(robot_.nx(), robot_.nx());
+            B_[t] = Eigen::MatrixXd::Zero(robot_.nx(), robot_.nu());
+        }
+        
+        // Check cost derivatives for numerical issues
+        if (!lx_[t].allFinite() || !lu_[t].allFinite() || !lxx_[t].allFinite() || !luu_[t].allFinite()) {
+            std::cout << "WARNING: Non-finite cost derivatives at timestep " << t 
+                      << ". Using zero/identity approximation." << std::endl;
+            lx_[t].setZero();
+            lu_[t].setZero();
+            lxx_[t] = Eigen::MatrixXd::Identity(robot_.nx(), robot_.nx()) * 1e-3;
+            luu_[t] = Eigen::MatrixXd::Identity(robot_.nu(), robot_.nu()) * 1e-3;
+        }
+        
         // Q-function quadratics with safe Eigen evaluation
         Eigen::VectorXd Atv = (A_[t].transpose() * Vx).eval();
         Eigen::VectorXd Btv = (B_[t].transpose() * Vx).eval();
@@ -204,24 +267,55 @@ void iLQR::backwardPass() {
         Qxu = lxu_[t];
         Qxu.noalias() += A_[t].transpose() * Vxx * B_[t];
         
+        // Check Q-function derivatives for numerical issues
+        if (!Qx.allFinite() || !Qu.allFinite() || !Qxx.allFinite() || !Quu.allFinite() || !Qxu.allFinite()) {
+            std::cout << "WARNING: Non-finite Q-function derivatives at timestep " << t 
+                      << ". Applying emergency regularization." << std::endl;
+            
+            // Replace non-finite values with safe defaults
+            if (!Qx.allFinite()) Qx.setZero();
+            if (!Qu.allFinite()) Qu.setZero();
+            if (!Qxx.allFinite()) Qxx = Eigen::MatrixXd::Identity(robot_.nx(), robot_.nx()) * 1e-3;
+            if (!Quu.allFinite()) Quu = Eigen::MatrixXd::Identity(robot_.nu(), robot_.nu()) * 1e-3;
+            if (!Qxu.allFinite()) Qxu.setZero();
+        }
+        
         // Regularization for numerical stability
         Quu += reg_lambda_ * Eigen::MatrixXd::Identity(Quu.rows(), Quu.cols());
         
-        // Check positive definiteness of Quu
+        // Check positive definiteness of Quu with enhanced regularization
         Eigen::LLT<Eigen::MatrixXd> llt(Quu);
         if (llt.info() != Eigen::Success) {
-            Quu += 1e-4 * Eigen::MatrixXd::Identity(Quu.rows(), Quu.cols());
+            double extra_reg = 1e-4;
+            Quu += extra_reg * Eigen::MatrixXd::Identity(Quu.rows(), Quu.cols());
+            std::cout << "WARNING: Quu not positive definite at timestep " << t 
+                      << ". Applied additional regularization: " << extra_reg << std::endl;
         }
         
-        // Compute gains
-        K_[t] = -Quu.ldlt().solve(Qxu.transpose());  // K = -Quu^{-1} Qux
-        kff_[t] = -Quu.ldlt().solve(Qu);             // k = -Quu^{-1} Qu
+        // Compute gains with enhanced numerical checks
+        Eigen::LDLT<Eigen::MatrixXd> solver(Quu);
+        if (solver.info() != Eigen::Success) {
+            std::cout << "ERROR: Failed to decompose Quu at timestep " << t 
+                      << ". Using zero gains." << std::endl;
+            K_[t].setZero();
+            kff_[t].setZero();
+        } else {
+            K_[t] = -solver.solve(Qxu.transpose());  // K = -Quu^{-1} Qux
+            kff_[t] = -solver.solve(Qu);             // k = -Quu^{-1} Qu
+        }
         
-        // Check for numerical issues
+        // Check for numerical issues in computed gains
         if (!K_[t].allFinite() || !kff_[t].allFinite()) {
-            std::cout << "Warning: Non-finite gains at timestep " << t << std::endl;
-            // Continue with regularization instead of returning
+            std::cout << "WARNING: Non-finite gains computed at timestep " << t 
+                      << ". Using zero gains as fallback." << std::endl;
+            K_[t].setZero();
+            kff_[t].setZero();
         }
+        
+        // Clamp gains to reasonable bounds to prevent extreme control actions
+        double max_gain = 1000.0;  // Reasonable upper bound for gains
+        K_[t] = K_[t].cwiseMax(-max_gain).cwiseMin(max_gain);
+        kff_[t] = kff_[t].cwiseMax(-max_gain).cwiseMin(max_gain);
         
         // Value function update with safe evaluation (corrected formulas from iLQR.tex)
         Eigen::VectorXd KTQu = (K_[t].transpose() * Qu).eval();
@@ -236,8 +330,15 @@ void iLQR::backwardPass() {
         // Correct formula: S_k = Q_xx + K_k^T Q_uu K_k + K_k^T Q_ux + Q_ux^T K_k
         Vxx = Qxx + K_[t].transpose() * Quu * K_[t] + K_[t].transpose() * Qxu.transpose() + Qxu * K_[t];
         
-        // Ensure Vxx stays symmetric
+        // Ensure Vxx stays symmetric and check for numerical issues
         Vxx = 0.5 * (Vxx + Vxx.transpose());
+        
+        if (!Vx.allFinite() || !Vxx.allFinite()) {
+            std::cout << "WARNING: Non-finite value function derivatives at timestep " << t 
+                      << ". Using regularized values." << std::endl;
+            if (!Vx.allFinite()) Vx.setZero();
+            if (!Vxx.allFinite()) Vxx = Eigen::MatrixXd::Identity(robot_.nx(), robot_.nx()) * 1e-3;
+        }
     }
 }
 
@@ -248,6 +349,14 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     
     // Compute baseline cost
     double baseline_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
+    
+    // Check if baseline cost is reasonable
+    if (!std::isfinite(baseline_cost) || baseline_cost > 1e10) {
+        std::cout << "WARNING: Baseline cost is not finite or too large: " << baseline_cost 
+                  << ". Skipping line search." << std::endl;
+        new_cost = baseline_cost;
+        return false;
+    }
     
     // More aggressive line search parameters
     std::vector<double> alphas = {1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01};
@@ -263,12 +372,64 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
         for (int t = 0; t < N_; ++t) {
             // Control law: u = ubar + alpha * k + K * (x - xbar)
             Eigen::VectorXd dx = x_new[t] - xbar_[t];
+            
+            // Check for numerical issues in feedback computation
+            if (!dx.allFinite()) {
+                std::cout << "WARNING: Non-finite state error at timestep " << t 
+                          << " with alpha " << alpha << ". Skipping this alpha." << std::endl;
+                rollout_success = false;
+                break;
+            }
+            
             u_new[t] = ubar_[t] + alpha * kff_[t] + K_[t] * dx;
             
-            // Rollout one step
+            // Check for numerical issues and clamp control to reasonable bounds
+            if (!u_new[t].allFinite()) {
+                std::cout << "WARNING: Non-finite control computed at timestep " << t 
+                          << " with alpha " << alpha << ". Clamping to baseline." << std::endl;
+                u_new[t] = ubar_[t];
+            }
+            
+            // Clamp control to actuator limits for stability
+            for (int i = 0; i < robot_.nu(); ++i) {
+                if (robot_.model() && i < robot_.model()->nu) {
+                    double u_min = robot_.model()->actuator_ctrlrange[i * 2];
+                    double u_max = robot_.model()->actuator_ctrlrange[i * 2 + 1];
+                    if (std::isfinite(u_min) && std::isfinite(u_max)) {
+                        u_new[t](i) = std::max(u_min, std::min(u_max, u_new[t](i)));
+                    }
+                }
+                
+                // Emergency clamp to prevent extreme values
+                u_new[t](i) = std::max(-1000.0, std::min(1000.0, u_new[t](i)));
+            }
+            
+            // Rollout one step with error handling
             try {
                 robot_.rolloutOneStep(x_new[t], u_new[t], x_new[t + 1]);
+                
+                // Check resulting state for numerical issues
+                if (!x_new[t + 1].allFinite()) {
+                    std::cout << "WARNING: Non-finite state from rollout at timestep " << t 
+                              << " with alpha " << alpha << ". Physics unstable." << std::endl;
+                    rollout_success = false;
+                    break;
+                }
+                
+                // Check for extreme state values that indicate instability
+                for (int i = 0; i < x_new[t + 1].size(); ++i) {
+                    if (std::abs(x_new[t + 1](i)) > 1e6) {
+                        std::cout << "WARNING: Extreme state value detected at timestep " << t 
+                                  << " with alpha " << alpha << ". State[" << i << "] = " 
+                                  << x_new[t + 1](i) << std::endl;
+                        rollout_success = false;
+                        break;
+                    }
+                }
+                
             } catch (const std::exception& e) {
+                std::cout << "WARNING: Exception during rollout at timestep " << t 
+                          << " with alpha " << alpha << ": " << e.what() << std::endl;
                 rollout_success = false;
                 break;
             }
@@ -278,6 +439,13 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
         
         // Compute cost of new trajectory
         double cost = computeTotalCost(x_new, u_new, x_ref, u_ref);
+        
+        // Check if cost is reasonable
+        if (!std::isfinite(cost) || cost > 1e10) {
+            std::cout << "WARNING: Line search produced non-finite or extreme cost with alpha " 
+                      << alpha << ": " << cost << std::endl;
+            continue;
+        }
         
         // Accept if cost decreased (simple sufficient decrease condition)
         if (cost < baseline_cost - 1e-6) {
@@ -332,7 +500,33 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
         return false;
     }
 
+    // Validate initial state for numerical issues
+    if (!x0.allFinite()) {
+        std::cerr << "ERROR: Non-finite initial state passed to iLQR solve." << std::endl;
+        cost_out = 1e10;
+        return false;
+    }
+
     double current_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
+    
+    // Check if initial cost is reasonable
+    if (!std::isfinite(current_cost) || current_cost > 1e8) {
+        std::cout << "WARNING: Initial cost is problematic: " << current_cost 
+                  << ". Attempting trajectory reinitialization." << std::endl;
+        
+        // Reinitialize with reference-aware cold start
+        initializeWithReference(x0, x_ref, u_ref);
+        current_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
+        
+        if (!std::isfinite(current_cost) || current_cost > 1e8) {
+            std::cerr << "ERROR: Cannot recover from problematic initial cost." << std::endl;
+            cost_out = current_cost;
+            return false;
+        }
+    }
+
+    int consecutive_failures = 0;
+    const int max_consecutive_failures = 3;
 
     for (int iter = 0; iter < max_iterations_; ++iter) {
         double previous_cost = current_cost;
@@ -342,6 +536,30 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
 
             // Forward rollout using current nominal controls
             forwardRolloutNominal();
+
+            // Check if rollout produced reasonable trajectory
+            bool trajectory_valid = true;
+            for (int t = 0; t <= N_; ++t) {
+                if (!xbar_[t].allFinite()) {
+                    std::cout << "WARNING: Non-finite state in trajectory at timestep " << t 
+                              << " in iteration " << iter << std::endl;
+                    trajectory_valid = false;
+                    break;
+                }
+            }
+            
+            if (!trajectory_valid) {
+                consecutive_failures++;
+                if (consecutive_failures >= max_consecutive_failures) {
+                    std::cout << "ERROR: Too many consecutive trajectory failures. Terminating solve." << std::endl;
+                    break;
+                }
+                
+                // Try with increased regularization
+                reg_lambda_ = std::min(reg_lambda_ * 10.0, 1e-2);
+                std::cout << "Increasing regularization to " << reg_lambda_ << " and retrying." << std::endl;
+                continue;
+            }
 
             // Linearize dynamics & cost
             computeLinearization();
@@ -353,28 +571,66 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
             // Forward line search to improve trajectory
             double new_cost;
             bool improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+            
             if (!improved) {
-                reg_lambda_ = std::min(reg_lambda_ * 10.0, 1e-3);
+                consecutive_failures++;
+                reg_lambda_ = std::min(reg_lambda_ * 10.0, 1e-2);
+                std::cout << "Line search failed in iteration " << iter 
+                          << ". Increasing regularization to " << reg_lambda_ << std::endl;
+                
                 backwardPass();
                 improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+                
                 if (!improved) {
-                    if (iter > 1) break; // give up after a couple failed attempts
+                    if (consecutive_failures >= max_consecutive_failures) {
+                        std::cout << "ERROR: Maximum consecutive failures reached. Terminating solve." << std::endl;
+                        break;
+                    }
                     continue;
                 }
             }
+            
+            // Success - reset failure counter and update regularization
+            consecutive_failures = 0;
             current_cost = new_cost;
             reg_lambda_ = std::max(reg_lambda_ / 2.0, 1e-6);
+            
         } catch (const std::exception& e) {
-            std::cerr << "iLQR solve exception: " << e.what() << std::endl;
-            break;
+            std::cerr << "iLQR solve exception in iteration " << iter << ": " << e.what() << std::endl;
+            consecutive_failures++;
+            if (consecutive_failures >= max_consecutive_failures) {
+                break;
+            }
+            continue;
         }
 
         // Convergence / divergence checks
         double delta = std::abs(current_cost - previous_cost);
-        if (delta < tolerance_) break;
-        if (current_cost > 1e6) break;
+        if (delta < tolerance_) {
+            std::cout << "iLQR converged in " << iter + 1 << " iterations. Final cost: " 
+                      << current_cost << std::endl;
+            break;
+        }
+        
+        if (current_cost > 1e8) {
+            std::cout << "ERROR: Cost diverged to " << current_cost << ". Terminating solve." << std::endl;
+            break;
+        }
+        
+        // Log progress for long solves
+        if (iter > 5) {
+            std::cout << "iLQR iteration " << iter << ": cost = " << current_cost 
+                      << ", delta = " << delta << ", reg = " << reg_lambda_ << std::endl;
+        }
     }
 
     cost_out = current_cost;
+    
+    // Final validation
+    if (!std::isfinite(cost_out) || cost_out > 1e8) {
+        std::cerr << "ERROR: iLQR solve completed with problematic final cost: " << cost_out << std::endl;
+        return false;
+    }
+    
     return true;
 }

@@ -85,6 +85,11 @@ public:
     mjData* data() const { return data_; }
     void setGravity(double gx = 0.0, double gy = 0.0, double gz = 0.0);
     void scaleRobotMass(double scale_factor);
+    
+    // Numerical stability monitoring and recovery
+    bool checkNumericalStability() const;
+    void logNumericalState() const;
+    bool recoverFromInstability();
 
 private:
     // MuJoCo model and data
