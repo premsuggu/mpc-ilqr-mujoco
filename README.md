@@ -190,11 +190,6 @@ Run the `simulate.py` and `plotter.py` files to see the results.
 <details>
 <summary>Common Issues and Solutions</summary>
 
-## 🐛 Troubleshooting
-
-<details>
-<summary>Common Issues and Solutions</summary>
-
 **Build Errors:**
 ```bash
 # Clean and rebuild (Linux/macOS)
