@@ -16,7 +16,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       
     - name: Setup Miniconda
       uses: conda-incubator/setup-miniconda@v3
@@ -45,38 +46,43 @@ jobs:
     - name: Install system dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        # Dependencies are handled by conda on macOS
         echo "Dependencies managed by conda"
         
-    - name: Configure CMake
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
       shell: bash -el {0}
       run: |
         mkdir -p build
         cd build
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
-        else
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-        fi
+        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
         
-    - name: Build
+    - name: Configure CMake (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      shell: bash -el {0}
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
       shell: bash -el {0}
       run: |
         cd build
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          cmake --build . --config Release --parallel 4
-        else
-          make -j4
-        fi
+        cmake --build . --config Release --parallel 4
+        
+    - name: Build (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      shell: bash -el {0}
+      run: |
+        cd build
+        make -j4
         
     - name: Verify build output
       shell: bash -el {0}
       run: |
         cd build
         ls -la
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          ls -la Release/ || echo "No Release directory"
-        fi
         
     - name: Test Python environment
       shell: bash -el {0}
@@ -85,30 +91,15 @@ jobs:
         python -c "import numpy; print('NumPy version:', numpy.__version__)"
         python -c "import matplotlib; print('Matplotlib version:', matplotlib.__version__)"
         
-    - name: Create test data and run Python scripts (headless)
+    - name: Test plotting (Ubuntu only)
       if: matrix.os == 'ubuntu-latest'
       shell: bash -el {0}
       run: |
-        # Create dummy results for testing
         mkdir -p results
         echo "step,time_sec,q_0,q_1,q_2,q_3,q_4,q_5,q_6,q_7,q_8,q_9,q_10,q_11,q_12,q_13,q_14,q_15,q_16,q_17,q_18,q_19,q_20,q_21,q_22,q_23,q_24,q_25" > results/q_optimal.csv
         echo "1,0.02,0,0,1.0432,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" >> results/q_optimal.csv
-        
-        # Test plotting with headless backend
         export DISPLAY=:99.0
-        xvfb-run -a python -c "
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import numpy as np
-print('Matplotlib backend:', matplotlib.get_backend())
-# Simple test plot
-plt.figure()
-plt.plot([1,2,3], [1,4,2])
-plt.savefig('results/test_plot.png')
-plt.close()
-print('Test plot created successfully')
-"
+        xvfb-run -a python -c "import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt; import numpy as np; plt.figure(); plt.plot([1,2,3], [1,4,2]); plt.savefig('results/test_plot.png'); plt.close(); print('Test plot created successfully')"
         
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
