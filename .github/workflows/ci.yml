@@ -1,0 +1,93 @@
+name: Cross-Platform Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniconda-version: "latest"
+        activate-environment: humanoid-mpc
+        environment-file: environment.yml
+        python-version: 3.11
+        auto-activate-base: false
+        
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake pkg-config xvfb
+        
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install cmake pkg-config
+        
+    - name: Setup MSVC (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: microsoft/setup-msbuild@v2
+      
+    - name: Configure CMake (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        mkdir build && cd build
+        cmake .. -G "Visual Studio 17 2022" -A x64
+        
+    - name: Build (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        cd build
+        make -j4
+        
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        cd build
+        cmake --build . --config Release
+        
+    - name: Test Python visualization (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash -l {0}
+      run: |
+        # Create dummy results for testing
+        mkdir -p results
+        echo "step,time_sec,q_0,q_1,q_2,q_3,q_4,q_5,q_6,q_7,q_8,q_9,q_10,q_11,q_12,q_13,q_14,q_15,q_16,q_17,q_18,q_19,q_20,q_21,q_22,q_23,q_24,q_25" > results/q_optimal.csv
+        echo "1,0.02,0,0,1.0432,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" >> results/q_optimal.csv
+        # Test plotting (headless)
+        xvfb-run -a python -c "import matplotlib; matplotlib.use('Agg'); exec(open('plotter.py').read())"
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-${{ matrix.os }}
+        path: |
+          build/
+          results/
+        retention-days: 7

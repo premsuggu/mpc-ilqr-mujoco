@@ -1,0 +1,103 @@
+# Build directories and CMake files
+build/
+Build/
+builds/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+!CMakeLists.txt
+Makefile
+
+# Generated results (keep structure, ignore contents)
+results/*.csv
+results/*.png
+results/*.jpg
+results/*.gif
+
+# Visual Studio / MSVC files
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.sln.docstates
+x64/
+Debug/
+Release/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.recipe
+*.log
+*.lastbuildstate
+
+# IDE files
+.vscode/
+.vs/
+.idea/
+*.user
+
+# Python cache and environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+*.egg-info/
+
+# Conda environments 
+.conda/
+conda-meta/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+
+# MuJoCo specific
+MUJOCO_LOG.TXT
+*.mjb
+
+# Documentation build
+docs/_build/
+docs/build/
+site/
+
+# Package files
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
