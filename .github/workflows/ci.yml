@@ -42,9 +42,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake pkg-config xvfb
-        sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libosmesa6-dev
-        sudo apt-get install -y libglx-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-        sudo apt-get install -y freeglut3-dev libglfw3-dev
+        sudo apt-get install -y libgl-dev libglu1-mesa-dev libx11-dev
+        sudo apt-get install -y mesa-common-dev libglfw3-dev
         
     - name: Install system dependencies (macOS)
       if: matrix.os == 'macos-latest'
@@ -65,7 +64,15 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          # Force OpenGL library paths for Ubuntu CI
+          cmake .. -DCMAKE_BUILD_TYPE=Release \
+            -DOpenGL_GL_PREFERENCE=GLVND \
+            -DOPENGL_INCLUDE_DIR=/usr/include \
+            -DOPENGL_gl_LIBRARY=/usr/lib/x86_64-linux-gnu/libGL.so
+        else
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+        fi
         
     - name: Build (Windows)
       if: matrix.os == 'windows-latest'
