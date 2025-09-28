@@ -78,6 +78,9 @@ int main() {
     Qf(nq + 2, nq + 2) *= 5.0;  // Critical final Z velocity
 
     robot.setCostWeights(Q, R, Qf);  // Basic MPC with state tracking + control regularization
+    
+    // Set CoM tracking weight
+    robot.setCoMWeight(500.0);  // Moderate CoM tracking weight
 
     // Soft Constraint Penalties
     robot.setConstraintWeights(5000.0, 5000.0); 

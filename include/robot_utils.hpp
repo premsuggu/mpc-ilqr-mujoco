@@ -57,6 +57,8 @@ public:
     double terminalCost(const Eigen::VectorXd& x) const;
     void setCostWeights(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& R, 
                         const Eigen::MatrixXd& Qf);
+    void setCoMWeight(double w_com) { w_com_ = w_com; }
+    double getCoMWeight() const { return w_com_; }
     // Cost helpers - REMOVED CoM and EE tracking
     
     // Constraint cost functions
@@ -73,7 +75,8 @@ public:
     bool loadReferences(const std::string& q_ref_path, const std::string& v_ref_path);
     void getReferenceWindow(int t0, int N, 
                             std::vector<Eigen::VectorXd>& x_ref_window,
-                            std::vector<Eigen::VectorXd>& u_ref_window) const;
+                            std::vector<Eigen::VectorXd>& u_ref_window,
+                            std::vector<Eigen::Vector3d>& com_ref_window) const;
 
     // Utility functions
     int jointId(const std::string& name) const;
@@ -101,7 +104,7 @@ private:
 
     // Cost matrices
     Eigen::MatrixXd Q_, R_, Qf_;
-    double w_com_;
+    double w_com_;  // CoM tracking weight
     double w_ee_pos_, w_ee_vel_;
     
     // Constraint weights
@@ -131,5 +134,10 @@ private:
     void unpackStateToData(const Eigen::VectorXd& x, mjData* target_data);
     void unpackControlToData(const Eigen::VectorXd& u, mjData* target_data);  
     void packStateFromData(Eigen::VectorXd& x, mjData* source_data) const;
+
+public:
+    
+    // CoM computation
+    Eigen::Vector3d computeCoM(const Eigen::VectorXd& x) const;
 
 };

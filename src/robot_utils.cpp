@@ -6,7 +6,7 @@
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
-      nx_(0), nu_(0), dt_(0.01), w_joint_limits_(500.0), w_control_limits_(1000.0) {
+      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_joint_limits_(500.0), w_control_limits_(1000.0) {
 }
 
 RobotUtils::~RobotUtils() {
@@ -168,18 +168,37 @@ double RobotUtils::stageCost(int t, const Eigen::VectorXd& x, const Eigen::Vecto
         Eigen::VectorXd u_err = u - u_ref_full_[u_ref_idx];
         
         double tracking_cost = 0.5 * (x_err.transpose() * Q_ * x_err + u_err.transpose() * R_ * u_err)(0, 0);
+        
+        // Add CoM tracking cost
+        double com_cost = 0.0;
+        if (w_com_ > 0.0 && !com_ref_full_.empty()) {
+            Eigen::Vector3d com_current = computeCoM(x);
+            int com_ref_idx = std::min(t, (int)com_ref_full_.size() - 1);
+            Eigen::Vector3d com_err = com_current - com_ref_full_[com_ref_idx];
+            com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+        }
+        
         double constraint_cost_val = constraintCost(x, u);
         
-        return tracking_cost + constraint_cost_val;
+        return tracking_cost + com_cost + constraint_cost_val;
     }
     
     Eigen::VectorXd x_err = x - x_ref_full_[t];
     Eigen::VectorXd u_err = u - u_ref_full_[t];
     
     double tracking_cost = 0.5 * (x_err.transpose() * Q_ * x_err + u_err.transpose() * R_ * u_err)(0, 0);
+    
+    // Add CoM tracking cost
+    double com_cost = 0.0;
+    if (w_com_ > 0.0 && t < (int)com_ref_full_.size()) {
+        Eigen::Vector3d com_current = computeCoM(x);
+        Eigen::Vector3d com_err = com_current - com_ref_full_[t];
+        com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+    }
+    
     double constraint_cost_val = constraintCost(x, u);
     
-    return tracking_cost + constraint_cost_val;
+    return tracking_cost + com_cost + constraint_cost_val;
 }
 
 double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
@@ -190,6 +209,14 @@ double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
     // Use last available reference
     Eigen::VectorXd x_err = x - x_ref_full_.back();
     double tracking_cost = 0.5 * (x_err.transpose() * Qf_ * x_err)(0, 0);
+    
+    // Add terminal CoM tracking cost
+    double com_cost = 0.0;
+    if (w_com_ > 0.0 && !com_ref_full_.empty()) {
+        Eigen::Vector3d com_current = computeCoM(x);
+        Eigen::Vector3d com_err = com_current - com_ref_full_.back();
+        com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+    }
     
     // Terminal constraint cost (only joint limits, no control at terminal state)
     double constraint_cost_val = 0.0;
@@ -219,7 +246,7 @@ double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
         }
     }
     
-    return tracking_cost + constraint_cost_val;
+    return tracking_cost + com_cost + constraint_cost_val;
 }
 
 void RobotUtils::setCostWeights(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& R, 
@@ -363,13 +390,19 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
 
 void RobotUtils::getReferenceWindow(int t0, int N, 
                                     std::vector<Eigen::VectorXd>& x_ref_window,
-                                    std::vector<Eigen::VectorXd>& u_ref_window) const {
+                                    std::vector<Eigen::VectorXd>& u_ref_window,
+                                    std::vector<Eigen::Vector3d>& com_ref_window) const {
     x_ref_window.clear();
     u_ref_window.clear();
+    com_ref_window.clear();
     
-    for (int i = 0; i <= N; ++i) {  // N+1 states, N controls
+    for (int i = 0; i <= N; ++i) {  // N+1 states, N controls, N+1 CoM references
         int ref_idx = std::min(t0 + i, (int)x_ref_full_.size() - 1);
         x_ref_window.push_back(x_ref_full_[ref_idx]);
+        
+        // Add CoM reference for this timestep
+        int com_ref_idx = std::min(t0 + i, (int)com_ref_full_.size() - 1);
+        com_ref_window.push_back(com_ref_full_[com_ref_idx]);
         
         if (i < N) {  // Only N controls
             int u_ref_idx = std::min(t0 + i, (int)u_ref_full_.size() - 1);
@@ -736,6 +769,31 @@ void RobotUtils::packStateFromData(Eigen::VectorXd& x, mjData* source_data) cons
     for (int i = 0; i < model_->nv; ++i) {
         x(model_->nq + i) = source_data->qvel[i];
     }
+}
+
+Eigen::Vector3d RobotUtils::computeCoM(const Eigen::VectorXd& x) const {
+    if (!model_ || !data_temp_) return Eigen::Vector3d::Zero();
+    
+    // Set state in temporary data and compute forward kinematics
+    // We need to cast away const to use helper functions
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_forward(model_, data_temp_);
+    
+    // Compute CoM using mass-weighted average
+    double total_mass = 0.0;
+    Eigen::Vector3d com = Eigen::Vector3d::Zero();
+    
+    for (int i = 1; i < model_->nbody; ++i) {  // Skip world body
+        double body_mass = model_->body_mass[i];
+        if (body_mass > 0) {
+            total_mass += body_mass;
+            for (int j = 0; j < 3; ++j) {
+                com(j) += body_mass * data_temp_->xipos[i * 3 + j];
+            }
+        }
+    }
+    
+    return (total_mass > 0) ? com / total_mass : com;
 }
 
 void RobotUtils::scaleRobotMass(double scale_factor) {

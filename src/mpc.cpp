@@ -34,13 +34,13 @@ bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) 
         extractReferenceWindow();
         // Warm start iLQR if we have a previous solution
         if (has_prev_solution_) {
-            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, &prev_xbar_, &prev_ubar_);
+            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, &prev_xbar_, &prev_ubar_);
         } else {
-            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_);
+            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_);
         }
         // Run iLQR
         double solve_cost;
-        bool success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, solve_cost);
+        bool success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, solve_cost);
         if (!success) {
             std::cerr << "iLQR solve failed at time index " << t_idx_ << std::endl;
             // If iLQR fails, use previous control or zero
@@ -114,7 +114,7 @@ void MPC::getNominalTrajectory(std::vector<Eigen::VectorXd>& x_traj,
 
 void MPC::extractReferenceWindow() {
     // Get reference window starting from current time index
-    robot_.getReferenceWindow(t_idx_, N_, x_ref_window_, u_ref_window_);
+    robot_.getReferenceWindow(t_idx_, N_, x_ref_window_, u_ref_window_, com_ref_window_);
 }
 
 Eigen::VectorXd MPC::computeTVLQRControl(const Eigen::VectorXd& x_measured) {

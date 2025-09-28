@@ -56,6 +56,7 @@ private:
 
     // Reference window (extracted each iteration)
     std::vector<Eigen::VectorXd> x_ref_window_, u_ref_window_;
+    std::vector<Eigen::Vector3d> com_ref_window_;  // CoM reference window
 
     // Previous solution for warm starting
     bool has_prev_solution_;

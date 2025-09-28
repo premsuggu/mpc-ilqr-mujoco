@@ -26,6 +26,7 @@ public:
     bool solve(const Eigen::VectorXd& x0,
                const std::vector<Eigen::VectorXd>& x_ref,
                const std::vector<Eigen::VectorXd>& u_ref,
+               const std::vector<Eigen::Vector3d>& com_ref,
                double& cost_out);
 
     // Access results
@@ -38,6 +39,7 @@ public:
     void initializeWithReference(const Eigen::VectorXd& x0,
                                 const std::vector<Eigen::VectorXd>& x_ref,
                                 const std::vector<Eigen::VectorXd>& u_ref,
+                                const std::vector<Eigen::Vector3d>& com_ref,
                                 const std::vector<Eigen::VectorXd>* prev_xbar = nullptr,
                                 const std::vector<Eigen::VectorXd>* prev_ubar = nullptr);
 
@@ -67,6 +69,7 @@ private:
 
     // Reference storage
     std::vector<Eigen::VectorXd> x_ref_, u_ref_;
+    std::vector<Eigen::Vector3d> com_ref_;  // CoM reference trajectory
 
     // Value function
     Eigen::VectorXd VxN_;     // Terminal gradient
@@ -82,6 +85,9 @@ private:
                                const std::vector<Eigen::VectorXd>& x_ref,
                                const std::vector<Eigen::VectorXd>& u_ref,
                                double& new_cost);
+    
+    // CoM cost derivatives (finite difference)
+    void addCoMCostDerivatives(int t, Eigen::VectorXd& lx, Eigen::MatrixXd& lxx);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

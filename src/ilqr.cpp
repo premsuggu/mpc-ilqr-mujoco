@@ -41,8 +41,12 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt)
 void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
                                   const std::vector<Eigen::VectorXd>& x_ref,
                                   const std::vector<Eigen::VectorXd>& u_ref,
+                                  const std::vector<Eigen::Vector3d>& com_ref,
                                   const std::vector<Eigen::VectorXd>* prev_xbar,
                                   const std::vector<Eigen::VectorXd>* prev_ubar) {
+    
+    // Store CoM reference
+    com_ref_ = com_ref;
     
     xbar_[0] = x0;
     
@@ -137,7 +141,10 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         luu_[t] = robot_.R();
         lxu_[t] = Eigen::MatrixXd::Zero(robot_.nx(), robot_.nu());
         
-        // REMOVED: CoM and EE tracking derivatives for minimal MPC
+        // ADD CoM TRACKING DERIVATIVES if weight > 0
+        if (robot_.getCoMWeight() > 0.0) {
+            addCoMCostDerivatives(t, lx_[t], lxx_[t]);
+        }
         
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
@@ -162,6 +169,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     Eigen::VectorXd x_err_N = xbar_[N_] - x_ref[N_];
     lx_[N_] = robot_.Qf() * x_err_N;
     lxx_[N_] = robot_.Qf();
+    
+    // ADD TERMINAL CoM TRACKING DERIVATIVES if weight > 0
+    if (robot_.getCoMWeight() > 0.0) {
+        addCoMCostDerivatives(N_, lx_[N_], lxx_[N_]);
+    }
     
     // Add terminal constraint gradients and hessians (joint limits only)
     Eigen::VectorXd terminal_constraint_grad_x(robot_.nx());
@@ -325,13 +337,18 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
 bool iLQR::solve(const Eigen::VectorXd& x0,
                  const std::vector<Eigen::VectorXd>& x_ref,
                  const std::vector<Eigen::VectorXd>& u_ref,
+                 const std::vector<Eigen::Vector3d>& com_ref,
                  double& cost_out) {
-    if (x_ref.size() != (size_t)(N_ + 1) || u_ref.size() != (size_t)N_) {
+    if (x_ref.size() != (size_t)(N_ + 1) || u_ref.size() != (size_t)N_ || com_ref.size() != (size_t)(N_ + 1)) {
         std::cerr << "Reference size mismatch: x_ref=" << x_ref.size()
                   << " expected=" << N_ + 1 << ", u_ref=" << u_ref.size()
-                  << " expected=" << N_ << std::endl;
+                  << " expected=" << N_ << ", com_ref=" << com_ref.size()
+                  << " expected=" << N_ + 1 << std::endl;
         return false;
     }
+    
+    // Store CoM reference
+    com_ref_ = com_ref;
 
     double current_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
 
@@ -378,4 +395,44 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
 
     cost_out = current_cost;
     return true;
+}
+
+void iLQR::addCoMCostDerivatives(int t, Eigen::VectorXd& lx, Eigen::MatrixXd& lxx) {
+    if (t >= (int)com_ref_.size()) return;
+    
+    const double eps = 1e-8;  // Same step size as validated in jac_test.py
+    const double w_com = robot_.getCoMWeight();
+    
+    // Current CoM position
+    Eigen::Vector3d com_current = robot_.computeCoM(xbar_[t]);
+    Eigen::Vector3d com_err = com_current - com_ref_[t];
+    
+    // Compute finite difference Jacobian: ∂CoM/∂q (3 x nq)
+    Eigen::MatrixXd com_jac(3, robot_.nq());
+    
+    for (int i = 0; i < robot_.nq(); ++i) {
+        // Perturb state in position direction
+        Eigen::VectorXd x_pert = xbar_[t];
+        x_pert(i) += eps;
+        
+        // Compute perturbed CoM
+        Eigen::Vector3d com_pert = robot_.computeCoM(x_pert);
+        
+        // Forward difference
+        com_jac.col(i) = (com_pert - com_current) / eps;
+    }
+    
+    // Add CoM cost gradient: lx += w_com * J^T * (com_current - com_ref)
+    // Only affects position part (first nq elements)
+    for (int i = 0; i < robot_.nq(); ++i) {
+        lx(i) += w_com * com_jac.col(i).dot(com_err);
+    }
+    
+    // Add CoM cost Hessian (Gauss-Newton approximation): lxx += w_com * J^T * J
+    // Only affects position-position block (first nq x nq)
+    for (int i = 0; i < robot_.nq(); ++i) {
+        for (int j = 0; j < robot_.nq(); ++j) {
+            lxx(i, j) += w_com * com_jac.col(i).dot(com_jac.col(j));
+        }
+    }
 }
