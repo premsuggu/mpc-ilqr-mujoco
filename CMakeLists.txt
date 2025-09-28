@@ -145,8 +145,19 @@ elseif(APPLE)
     target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARY} ${COCOA_LIBRARY} ${IOKIT_LIBRARY} ${COREVIDEO_LIBRARY})
 else()
     # Linux
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES} pthread dl)
+    find_package(OpenGL QUIET)
+    if(OPENGL_FOUND)
+        target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES} pthread dl)
+    else()
+        # Fallback for systems where OpenGL detection is problematic
+        find_library(GL_LIBRARY NAMES GL OpenGL PATHS /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu)
+        if(GL_LIBRARY)
+            target_link_libraries(${PROJECT_NAME} ${GL_LIBRARY} pthread dl)
+        else()
+            message(WARNING "OpenGL not found, linking with -lGL")
+            target_link_libraries(${PROJECT_NAME} GL pthread dl)
+        endif()
+    endif()
 endif()
 
 # Compiler options

@@ -16,7 +16,7 @@ int main() {
 
     // Fire up the robot model
     RobotUtils robot;
-    if (!robot.loadModel("/home/prem/mujoco_mpc/robot/h1_description/mjcf/scene.xml")) {
+    if (!robot.loadModel("robots/h1_description/mjcf/scene.xml")) {
         std::cerr << "Failed to load robot model\n";
         return 1;
     }
