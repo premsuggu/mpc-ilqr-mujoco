@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot_utils.hpp"
+#include "derivatives.hpp"
 #include <vector>
 
 /**
@@ -45,6 +46,7 @@ public:
 
 private:
     RobotUtils& robot_;
+    derivatives::EEDerivatives derivatives_;  // Symbolic derivatives system
     int N_;      // Horizon length
     double dt_;
 
@@ -86,8 +88,9 @@ private:
                                const std::vector<Eigen::VectorXd>& u_ref,
                                double& new_cost);
     
-    // CoM cost derivatives (finite difference)
-    void addCoMCostDerivatives(int t, Eigen::VectorXd& lx, Eigen::MatrixXd& lxx);
+    // Symbolic cost derivatives (replacing finite difference methods)
+    void addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref);
+    void addEEPosCostDerivatives(int t);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

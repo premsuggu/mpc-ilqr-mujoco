@@ -59,6 +59,8 @@ public:
                         const Eigen::MatrixXd& Qf);
     void setCoMWeight(double w_com) { w_com_ = w_com; }
     double getCoMWeight() const { return w_com_; }
+    void setEEPosWeight(double w_ee) { w_ee_pos_ = w_ee; }
+    double getEEPosWeight() const { return w_ee_pos_; }
     // Cost helpers - REMOVED CoM and EE tracking
     
     // Constraint cost functions
@@ -80,6 +82,8 @@ public:
 
     // Utility functions
     int jointId(const std::string& name) const;
+    std::string getEEFrameName(int ee_idx) const;
+    Eigen::Vector3d getEEReference(int t, int ee_idx) const;
     void resetToReference(int t);
     void initializeStandingPose();
     void computeGravComp(Eigen::VectorXd& ugrav) const;

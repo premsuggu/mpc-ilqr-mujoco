@@ -106,8 +106,6 @@ htmlcov/
 coverage.xml
 
 # Test files
-jac_test.py
 sim.py
-analyze.cpp
 iLQR.tex
-jac.py
+*test*

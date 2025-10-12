@@ -15,6 +15,10 @@ dependencies:
   # MuJoCo Python bindings (includes C++ MuJoCo automatically)
   - mujoco>=3.0.0
   
+  # Pinocchio and CasADi for automatic differentiation
+  - pinocchio>=2.6.0
+  - casadi>=3.6.0
+  
   # C++ build tools and libraries (cross-platform)
   - cmake>=3.20
   - ninja  # Fast build system

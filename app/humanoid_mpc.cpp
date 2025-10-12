@@ -81,6 +81,9 @@ int main() {
     
     // Set CoM tracking weight
     robot.setCoMWeight(500.0);  // Moderate CoM tracking weight
+    
+    // Set end-effector position tracking weight
+    robot.setEEPosWeight(500.0);  // Strong EE position tracking
 
     // Soft Constraint Penalties
     robot.setConstraintWeights(5000.0, 5000.0); 

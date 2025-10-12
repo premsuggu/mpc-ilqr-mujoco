@@ -416,6 +416,29 @@ int RobotUtils::jointId(const std::string& name) const {
     return (it != joint_name_to_id_.end()) ? it->second : -1;
 }
 
+std::string RobotUtils::getEEFrameName(int ee_idx) const {
+    if (ee_idx >= (int)ee_site_ids_.size()) {
+        throw std::runtime_error("Invalid EE index: " + std::to_string(ee_idx));
+    }
+    
+    int body_id = ee_site_ids_[ee_idx];
+    const char* body_name = mj_id2name(model_, mjOBJ_BODY, body_id);
+    if (!body_name) {
+        throw std::runtime_error("Failed to get body name for EE index: " + std::to_string(ee_idx));
+    }
+    
+    return std::string(body_name);
+}
+
+Eigen::Vector3d RobotUtils::getEEReference(int t, int ee_idx) const {
+    if (t >= (int)ee_pos_ref_full_.size() || ee_idx >= (int)ee_pos_ref_full_[t].size()) {
+        throw std::runtime_error("Invalid reference index: t=" + std::to_string(t) + 
+                                ", ee_idx=" + std::to_string(ee_idx));
+    }
+    
+    return ee_pos_ref_full_[t][ee_idx];
+}
+
 void RobotUtils::resetToReference(int t) {
     if (t < (int)x_ref_full_.size()) {
         setState(x_ref_full_[t]);

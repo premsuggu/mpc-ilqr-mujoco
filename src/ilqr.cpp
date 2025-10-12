@@ -3,8 +3,8 @@
 #include <chrono>
 
 iLQR::iLQR(RobotUtils& robot, int N, double dt) 
-        : robot_(robot), N_(N), dt_(dt), reg_lambda_(1e-6),
-            max_iterations_(10), tolerance_(1e-4) {
+        : robot_(robot), derivatives_("robots/h1_description/urdf/h1.urdf", true),
+          N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4) {
     // Set up all the storage for trajectories, gains, and derivatives
     int nx = robot_.nx();
     int nu = robot_.nu();
@@ -143,7 +143,12 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         
         // ADD CoM TRACKING DERIVATIVES if weight > 0
         if (robot_.getCoMWeight() > 0.0) {
-            addCoMCostDerivatives(t, lx_[t], lxx_[t]);
+            addCoMCostDerivatives(t, com_ref_[t]);
+        }
+        
+        // ADD EE POSITION TRACKING DERIVATIVES if weight > 0
+        if (robot_.getEEPosWeight() > 0.0) {
+            addEEPosCostDerivatives(t);
         }
         
         // ADD CONSTRAINT DERIVATIVES
@@ -172,7 +177,12 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     
     // ADD TERMINAL CoM TRACKING DERIVATIVES if weight > 0
     if (robot_.getCoMWeight() > 0.0) {
-        addCoMCostDerivatives(N_, lx_[N_], lxx_[N_]);
+        addCoMCostDerivatives(N_, com_ref_[N_]);
+    }
+    
+    // ADD TERMINAL EE POSITION TRACKING DERIVATIVES if weight > 0
+    if (robot_.getEEPosWeight() > 0.0) {
+        addEEPosCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -397,42 +407,37 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
     return true;
 }
 
-void iLQR::addCoMCostDerivatives(int t, Eigen::VectorXd& lx, Eigen::MatrixXd& lxx) {
-    if (t >= (int)com_ref_.size()) return;
-    
-    const double eps = 1e-8;  // Same step size as validated in jac_test.py
+void iLQR::addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref) {
     const double w_com = robot_.getCoMWeight();
     
-    // Current CoM position
-    Eigen::Vector3d com_current = robot_.computeCoM(xbar_[t]);
-    Eigen::Vector3d com_err = com_current - com_ref_[t];
+    // Use symbolic derivatives (fast and exact!)
+    Eigen::VectorXd grad_com = derivatives_.CoMGrad(xbar_[t], com_ref, w_com);
+    Eigen::MatrixXd hess_com = derivatives_.CoMHess(xbar_[t], com_ref, w_com);
     
-    // Compute finite difference Jacobian: ∂CoM/∂q (3 x nq)
-    Eigen::MatrixXd com_jac(3, robot_.nq());
+    // Add to cost quadratics
+    lx_[t] += grad_com;
+    lxx_[t] += hess_com;
+}
+
+void iLQR::addEEPosCostDerivatives(int t) {
+    const double w_ee = robot_.getEEPosWeight();
     
-    for (int i = 0; i < robot_.nq(); ++i) {
-        // Perturb state in position direction
-        Eigen::VectorXd x_pert = xbar_[t];
-        x_pert(i) += eps;
-        
-        // Compute perturbed CoM
-        Eigen::Vector3d com_pert = robot_.computeCoM(x_pert);
-        
-        // Forward difference
-        com_jac.col(i) = (com_pert - com_current) / eps;
-    }
-    
-    // Add CoM cost gradient: lx += w_com * J^T * (com_current - com_ref)
-    // Only affects position part (first nq elements)
-    for (int i = 0; i < robot_.nq(); ++i) {
-        lx(i) += w_com * com_jac.col(i).dot(com_err);
-    }
-    
-    // Add CoM cost Hessian (Gauss-Newton approximation): lxx += w_com * J^T * J
-    // Only affects position-position block (first nq x nq)
-    for (int i = 0; i < robot_.nq(); ++i) {
-        for (int j = 0; j < robot_.nq(); ++j) {
-            lxx(i, j) += w_com * com_jac.col(i).dot(com_jac.col(j));
+    // Add derivatives for each end-effector
+    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link
+        try {
+            std::string frame_name = robot_.getEEFrameName(ee_idx);
+            Eigen::Vector3d ee_ref = robot_.getEEReference(t, ee_idx);
+            
+            // Use symbolic derivatives (fast and exact!)
+            Eigen::VectorXd grad_ee = derivatives_.EEposGrad(xbar_[t], ee_ref, frame_name, w_ee);
+            Eigen::MatrixXd hess_ee = derivatives_.EEposHess(xbar_[t], ee_ref, frame_name, w_ee);
+            
+            // Add to cost quadratics
+            lx_[t] += grad_ee;
+            lxx_[t] += hess_ee;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: EE cost error for idx " << ee_idx << ": " << e.what() << std::endl;
         }
     }
 }
