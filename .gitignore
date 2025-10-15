@@ -109,3 +109,6 @@ coverage.xml
 sim.py
 iLQR.tex
 *test*
+
+# Documents files
+docs/

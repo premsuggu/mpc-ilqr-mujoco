@@ -128,13 +128,8 @@ private:
     // Joint name to ID mapping
     std::unordered_map<std::string, int> joint_name_to_id_;
 
-    // Helper functions
+    // Helper functions for packing/unpacking (optimized with Eigen::Map)
     void buildJointNameMap();
-    void packState(Eigen::VectorXd& x) const;
-    void unpackState(const Eigen::VectorXd& x);
-    void packControl(Eigen::VectorXd& u) const;
-    void unpackControl(const Eigen::VectorXd& u);
-
     void unpackStateToData(const Eigen::VectorXd& x, mjData* target_data);
     void unpackControlToData(const Eigen::VectorXd& u, mjData* target_data);  
     void packStateFromData(Eigen::VectorXd& x, mjData* source_data) const;

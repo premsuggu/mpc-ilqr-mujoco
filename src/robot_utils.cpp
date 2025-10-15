@@ -76,14 +76,14 @@ void RobotUtils::setState(const Eigen::VectorXd& x) {
         std::cerr << "Invalid state size: " << x.size() << " (expected " << nx_ << ")" << std::endl;
         return;
     }
-    unpackState(x);
+    unpackStateToData(x, data_);
 }
 
 // Get the robot's current state
 void RobotUtils::getState(Eigen::VectorXd& x) const {
     if (!data_) return;
     x.resize(nx_);
-    packState(x);
+    packStateFromData(x, data_);
 }
 
 // Set the robot's control input (actuator commands)
@@ -92,7 +92,7 @@ void RobotUtils::setControl(const Eigen::VectorXd& u) {
         std::cerr << "Invalid control size: " << u.size() << " (expected " << nu_ << ")" << std::endl;
         return;
     }
-    unpackControl(u);
+    unpackControlToData(u, data_);
 }
 
 // Advance the simulation by one step
@@ -503,40 +503,6 @@ void RobotUtils::buildJointNameMap() {
     // std::cout << "Built joint name mapping for " << joint_name_to_id_.size() << " joints" << std::endl;
 }
 
-void RobotUtils::packState(Eigen::VectorXd& x) const {
-    // Pack MuJoCo state [qpos; qvel] into Eigen vector
-    for (int i = 0; i < model_->nq; ++i) {
-        x(i) = data_->qpos[i];
-    }
-    for (int i = 0; i < model_->nv; ++i) {
-        x(model_->nq + i) = data_->qvel[i];
-    }
-}
-
-void RobotUtils::unpackState(const Eigen::VectorXd& x) {
-    // Unpack Eigen vector into MuJoCo state [qpos; qvel]
-    for (int i = 0; i < model_->nq; ++i) {
-        data_->qpos[i] = x(i);
-    }
-    for (int i = 0; i < model_->nv; ++i) {
-        data_->qvel[i] = x(model_->nq + i);
-    }
-}
-
-void RobotUtils::packControl(Eigen::VectorXd& u) const {
-    // Pack MuJoCo controls into Eigen vector
-    for (int i = 0; i < model_->nu; ++i) {
-        u(i) = data_->ctrl[i];
-    }
-}
-
-void RobotUtils::unpackControl(const Eigen::VectorXd& u) {
-    // Unpack Eigen vector into MuJoCo controls
-    for (int i = 0; i < model_->nu; ++i) {
-        data_->ctrl[i] = u(i);
-    }
-}
-
 // ============================================================================
 // CONSTRAINT COST FUNCTIONS
 // ============================================================================
@@ -767,31 +733,22 @@ void RobotUtils::setGravity(double gx, double gy, double gz) {
 }
 
 void RobotUtils::unpackStateToData(const Eigen::VectorXd& x, mjData* target_data) {
-    // Unpack state directly to specified data
-    for (int i = 0; i < model_->nq; ++i) {
-        target_data->qpos[i] = x(i);
-    }
-    for (int i = 0; i < model_->nv; ++i) {
-        target_data->qvel[i] = x(model_->nq + i);
-    }
+    // Unpack state directly to specified data using Eigen::Map for efficient memory copy
+    // This avoids element-by-element loops and uses optimized BLAS operations
+    Eigen::Map<Eigen::VectorXd>(target_data->qpos, model_->nq) = x.head(model_->nq);
+    Eigen::Map<Eigen::VectorXd>(target_data->qvel, model_->nv) = x.tail(model_->nv);
 }
 
 void RobotUtils::unpackControlToData(const Eigen::VectorXd& u, mjData* target_data) {
-    // Unpack control directly to specified data
-    for (int i = 0; i < model_->nu; ++i) {
-        target_data->ctrl[i] = u(i);
-    }
+    // Unpack control directly to specified data using Eigen::Map
+    Eigen::Map<Eigen::VectorXd>(target_data->ctrl, model_->nu) = u;
 }
 
 void RobotUtils::packStateFromData(Eigen::VectorXd& x, mjData* source_data) const {
-    // Pack state from specified data
+    // Pack state from specified data using Eigen::Map for efficient memory copy
     x.resize(nx_);
-    for (int i = 0; i < model_->nq; ++i) {
-        x(i) = source_data->qpos[i];
-    }
-    for (int i = 0; i < model_->nv; ++i) {
-        x(model_->nq + i) = source_data->qvel[i];
-    }
+    x.head(model_->nq) = Eigen::Map<const Eigen::VectorXd>(source_data->qpos, model_->nq);
+    x.tail(model_->nv) = Eigen::Map<const Eigen::VectorXd>(source_data->qvel, model_->nv);
 }
 
 Eigen::Vector3d RobotUtils::computeCoM(const Eigen::VectorXd& x) const {
