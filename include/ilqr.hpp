@@ -16,7 +16,7 @@
  */
 class iLQR {
 public:
-    iLQR(RobotUtils& robot, int N, double dt);
+    iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path);
 
     // Configuration
     void setRegularization(double lambda);

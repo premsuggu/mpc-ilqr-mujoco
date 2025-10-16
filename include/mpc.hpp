@@ -17,7 +17,7 @@
  */
 class MPC {
 public:
-    MPC(RobotUtils& robot, int N, double dt);
+    MPC(RobotUtils& robot, int N, double dt, const std::string& urdf_path);
 
     // Main MPC step (call at 50Hz)
     bool stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply);

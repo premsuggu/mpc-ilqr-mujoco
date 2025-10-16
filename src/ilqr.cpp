@@ -2,8 +2,8 @@
 #include <iostream>
 #include <chrono>
 
-iLQR::iLQR(RobotUtils& robot, int N, double dt) 
-        : robot_(robot), derivatives_("robots/h1_description/urdf/h1.urdf", true),
+iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path) 
+        : robot_(robot), derivatives_(urdf_path, true),
           N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4) {
     // Set up all the storage for trajectories, gains, and derivatives
     int nx = robot_.nx();

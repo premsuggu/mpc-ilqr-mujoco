@@ -30,7 +30,7 @@ dependencies:
   - glfw  # OpenGL windowing (C++)
   
   # Development tools
-  - jupyter
+  - yaml-cpp
   - ipython
   - pytest
   

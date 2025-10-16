@@ -1,0 +1,60 @@
+# config.yaml - MPC Configuration File
+# All paths are relative to project root directory
+
+robot:
+  name: h1
+  model_path: "robots/h1_description/mjcf/scene.xml"
+  urdf_path: "robots/h1_description/urdf/h1.urdf"
+  ee_feet: 
+    right_feet_ee: "right_ankle_link"
+    left_feet_ee: "left_ankle_link"
+
+reference_trajectory:
+  q_ref: "data/q_standing.csv"
+  v_ref: "data/v_standing.csv"
+
+mpc:
+  horizon: 25              # MPC prediction horizon (N)
+  dt: 0.02                 # MPC timestep (50 Hz)
+  physics_dt: 0.02         # Physics engine timestep
+  gravity: [0.0, 0.0, -5.0]  # World gravity [x, y, z]
+  sim_steps: 50            # Total simulation steps
+  contact_impratio: 100.0  # Contact stiffness for stability
+
+  cost_weights:
+    # State deviation weights (Q matrix)
+    Q_position_xy: 100.0      # X,Y position weight
+    Q_position_z: 2000.0      # Z position weight (critical)
+    Q_quat_w: 500.0           # Quaternion real part
+    Q_quat_xyz: [500.0, 500.0, 300.0]  # [qx, qy, qz] - roll, pitch, yaw
+    Q_joint_pos: 80.0         # Joint position tracking
+    Q_vel_xy: 800.0           # X,Y velocity damping
+    Q_vel_z: 5000.0           # Z velocity damping (critical)
+    Q_ang_vel: 200.0          # Angular velocity damping
+    Q_joint_vel: 150.0        # Joint velocity damping
+    
+    # Control effort weight (R matrix)
+    R_control: 0.01           # Control effort penalty
+    
+    # Terminal cost multiplier (Qf = Q * Qf_multiplier)
+    Qf_multiplier: 15.0       # Terminal cost base multiplier
+    Qf_position_xy: 2.0       # Additional multiplier for terminal X,Y
+    Qf_position_z: 3.0        # Additional multiplier for terminal Z
+    Qf_vel_z: 5.0             # Additional multiplier for terminal Z velocity
+    
+    # Task-specific weights
+    W_com: 500.0              # Center of Mass tracking weight
+    W_foot: 500.0             # End-effector position tracking weight
+
+  constraints:
+    joint_limit_weight: 5000.0    # Joint limit soft constraint penalty
+    torque_limit_weight: 5000.0   # Torque limit soft constraint penalty
+
+paths:
+  logs_dir: "logs"          # Directory for log files
+  results_dir: "results"    # Directory for result files
+
+logging:
+  verbose: true             # Print detailed progress
+  save_trajectories: true   # Save optimal trajectories to file
+  results_path: "results"   # Directory for trajectory logging

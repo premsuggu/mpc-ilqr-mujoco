@@ -24,6 +24,7 @@ add_executable(humanoid_mpc
     src/ilqr.cpp
     src/mpc.cpp
     src/derivatives.cpp
+    src/config.cpp
     app/humanoid_mpc.cpp
 )
 
@@ -36,6 +37,7 @@ target_link_libraries(humanoid_mpc
     casadi
     glfw
     GL pthread dl
+    yaml-cpp
 )
 
 # Compiler flags for main executable only

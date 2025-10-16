@@ -112,3 +112,6 @@ iLQR.tex
 
 # Documents files
 docs/
+
+# Backup files
+*backup*

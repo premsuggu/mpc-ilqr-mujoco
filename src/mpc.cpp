@@ -3,8 +3,9 @@
 #include <iostream>
 #include <chrono>
 
-MPC::MPC(RobotUtils& robot, int N, double dt) 
-        : robot_(robot), ilqr_(robot, N, dt), N_(N), dt_(dt), 
+// Constructor
+MPC::MPC(RobotUtils& robot, int N, double dt, const std::string& urdf_path) 
+        : robot_(robot), ilqr_(robot, N, dt, urdf_path), N_(N), dt_(dt), 
             t_idx_(0), has_prev_solution_(false),
             last_solve_cost_(0.0), last_solve_time_ms_(0.0) {
     // Set up reference windows and previous solution storage
