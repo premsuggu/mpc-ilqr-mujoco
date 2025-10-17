@@ -42,6 +42,14 @@ add_executable(humanoid_mpc
     app/humanoid_mpc.cpp
 )
 
+# Fix Pinocchio hidden symbol issue on Linux CI
+if(UNIX AND NOT APPLE)
+    # Force default visibility for all symbols (fixes hidden symbol errors)
+    target_compile_options(humanoid_mpc PRIVATE -fvisibility=default)
+    # Force linker to include all dependencies
+    target_link_options(humanoid_mpc PRIVATE -Wl,--no-as-needed)
+endif()
+
 # Link libraries
 # GLFW library name differs across platforms in Conda (glfw on Unix, glfw3dll on Windows)
 set(GLFW_LIB_NAME glfw)
@@ -63,6 +71,12 @@ target_link_libraries(humanoid_mpc
 if(UNIX AND NOT APPLE)
     # Linux-specific system libs
     target_link_libraries(humanoid_mpc GL pthread dl)
+    # Explicitly link Pinocchio transitive dependencies (fixes hidden symbol errors)
+    target_link_libraries(humanoid_mpc 
+        urdfdom_model
+        urdfdom_world
+        console_bridge
+    )
 elseif(WIN32)
     # Windows system libs typically required by OpenGL/GLFW
     target_link_libraries(humanoid_mpc opengl32 user32 gdi32 shell32)
