@@ -2,6 +2,15 @@
 #include <iostream>
 #include <chrono>
 
+#ifdef ENABLE_PROFILING
+#include <map>
+#include <vector>
+struct ProfileData {
+    std::vector<double> times;
+};
+extern std::map<std::string, ProfileData> prof_data;
+#endif
+
 iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path) 
         : robot_(robot), derivatives_(urdf_path, true),
           N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4) {
@@ -360,7 +369,15 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
     // Store CoM reference
     com_ref_ = com_ref;
 
+#ifdef ENABLE_PROFILING
+    auto t_cost_start = std::chrono::steady_clock::now();
+#endif
     double current_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
+#ifdef ENABLE_PROFILING
+    auto t_cost_end = std::chrono::steady_clock::now();
+    prof_data["iLQR_computeCost"].times.push_back(
+        std::chrono::duration<double, std::milli>(t_cost_end - t_cost_start).count());
+#endif
 
     for (int iter = 0; iter < max_iterations_; ++iter) {
         double previous_cost = current_cost;
@@ -369,22 +386,92 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
             xbar_[0] = x0;
 
             // Forward rollout using current nominal controls
+#ifdef ENABLE_PROFILING
+            {
+                auto prof_start = std::chrono::steady_clock::now();
+                forwardRolloutNominal();
+                auto prof_end = std::chrono::steady_clock::now();
+                prof_data["iLQR_forwardRollout"].times.push_back(
+                    std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+            }
+#else
             forwardRolloutNominal();
+#endif
 
             // Linearize dynamics & cost
+#ifdef ENABLE_PROFILING
+            {
+                auto prof_start = std::chrono::steady_clock::now();
+                computeLinearization();
+                auto prof_end = std::chrono::steady_clock::now();
+                prof_data["iLQR_linearization"].times.push_back(
+                    std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+            }
+#else
             computeLinearization();
+#endif
+
+#ifdef ENABLE_PROFILING
+            {
+                auto prof_start = std::chrono::steady_clock::now();
+                computeCostQuadratics(x_ref, u_ref);
+                auto prof_end = std::chrono::steady_clock::now();
+                prof_data["iLQR_costQuadratics"].times.push_back(
+                    std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+            }
+#else
             computeCostQuadratics(x_ref, u_ref);
+#endif
 
             // Backward pass for gains
+#ifdef ENABLE_PROFILING
+            {
+                auto prof_start = std::chrono::steady_clock::now();
+                backwardPass();
+                auto prof_end = std::chrono::steady_clock::now();
+                prof_data["iLQR_backwardPass"].times.push_back(
+                    std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+            }
+#else
             backwardPass();
+#endif
 
             // Forward line search to improve trajectory
             double new_cost;
-            bool improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+            bool improved;
+#ifdef ENABLE_PROFILING
+            {
+                auto prof_start = std::chrono::steady_clock::now();
+                improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+                auto prof_end = std::chrono::steady_clock::now();
+                prof_data["iLQR_lineSearch"].times.push_back(
+                    std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+            }
+#else
+            improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+#endif
+            
             if (!improved) {
                 reg_lambda_ = std::min(reg_lambda_ * 10.0, 1e-3);
+#ifdef ENABLE_PROFILING
+                {
+                    auto prof_start = std::chrono::steady_clock::now();
+                    backwardPass();
+                    auto prof_end = std::chrono::steady_clock::now();
+                    prof_data["iLQR_backwardPass"].times.push_back(
+                        std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+                }
+                {
+                    auto prof_start = std::chrono::steady_clock::now();
+                    improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+                    auto prof_end = std::chrono::steady_clock::now();
+                    prof_data["iLQR_lineSearch"].times.push_back(
+                        std::chrono::duration<double, std::milli>(prof_end - prof_start).count());
+                }
+#else
                 backwardPass();
                 improved = forwardPassLineSearch(x0, x_ref, u_ref, new_cost);
+#endif
                 if (!improved) {
                     if (iter > 1) break; // give up after a couple failed attempts
                     continue;

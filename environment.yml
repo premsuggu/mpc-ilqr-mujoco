@@ -6,16 +6,16 @@ dependencies:
   # Core Python
   - python=3.11
   
-  # Scientific computing
+  # Scientific computing (Python)
   - numpy>=1.24.0
   - pandas>=2.0.0
   - matplotlib>=3.7.0
   - scipy>=1.10.0
   
-  # MuJoCo Python bindings (includes C++ MuJoCo automatically)
+  # MuJoCo Python bindings (includes C++ MuJoCo library automatically)
   - mujoco>=3.0.0
   
-  # Pinocchio and CasADi for automatic differentiation
+  # Pinocchio and CasADi for automatic differentiation (C++ & Python)
   - pinocchio>=2.6.0
   - casadi>=3.6.0
   
@@ -27,16 +27,18 @@ dependencies:
   # C++ compiler toolchain (cross-platform)
   - cxx-compiler  # Automatically installs appropriate C++ compiler for platform
   - eigen  # Linear algebra library (C++)
-  - glfw  # OpenGL windowing (C++)
+  - glfw  # OpenGL windowing library (C++)
   
-  # Development tools
-  - yaml-cpp
-  - ipython
-  - pytest
+  # Configuration file handling
+  - conda-forge::yaml-cpp  # C++ YAML parser
+  - pyyaml    # Python YAML parser (for simulate.py)
   
-  # Visualization libraries
+  # Visualization libraries (Python)
   - seaborn
   - plotly
+  
+  # Development tools
+  - ipython
   
   # Build utilities
   - make  # For Linux/macOS

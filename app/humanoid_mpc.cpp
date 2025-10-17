@@ -6,6 +6,35 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <map>
+#include <vector>
+
+#ifdef ENABLE_PROFILING
+#include <sstream>
+#include <iomanip>
+
+// Simple profiling data structure
+struct ProfileData {
+    std::vector<double> times;
+};
+std::map<std::string, ProfileData> prof_data;
+
+// Get current memory usage in MB from /proc/self/status
+double getCurrentMemoryMB() {
+    std::ifstream status("/proc/self/status");
+    std::string line;
+    while (std::getline(status, line)) {
+        if (line.substr(0, 6) == "VmRSS:") {
+            std::istringstream iss(line);
+            std::string label, unit;
+            size_t value;
+            iss >> label >> value >> unit;
+            return value / 1024.0;  // Convert KB to MB
+        }
+    }
+    return 0.0;
+}
+#endif
 
 
 int main() {
@@ -51,6 +80,13 @@ int main() {
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
+#ifdef ENABLE_PROFILING
+    double mem_initial = getCurrentMemoryMB();
+    double mem_peak = mem_initial;
+    std::cout << "=== Profiling ENABLED ===" << std::endl;
+    std::cout << "Initial memory: " << mem_initial << " MB" << std::endl;
+#endif
+
     int physics_steps_per_mpc = (int)(config.mpc.dt / config.mpc.physics_dt);
     for (int step = 0; step < config.mpc.sim_steps; ++step) {
         // Grab the current state
@@ -65,7 +101,15 @@ int main() {
 
         // Run one step of MPC
         Eigen::VectorXd u_apply(robot.nu());
+#ifdef ENABLE_PROFILING
+        auto t_mpc_start = std::chrono::steady_clock::now();
+#endif
         bool success = mpc.stepOnce(x_current, u_apply);
+#ifdef ENABLE_PROFILING
+        auto t_mpc_end = std::chrono::steady_clock::now();
+        prof_data["MPC_stepOnce"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_mpc_end - t_mpc_start).count());
+#endif
 
         if (!success) {
             std::cerr << "MPC failed at step " << step << ", using gravity compensation only" << std::endl;
@@ -91,9 +135,21 @@ int main() {
         robot.setControl(u_apply);
         // Recompute contacts after changing control
         mj_forward(robot.model(), robot.data());
+#ifdef ENABLE_PROFILING
+        auto t_phys_start = std::chrono::steady_clock::now();
+#endif
         for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
             robot.step();
         }
+#ifdef ENABLE_PROFILING
+        auto t_phys_end = std::chrono::steady_clock::now();
+        prof_data["Physics_steps"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_phys_end - t_phys_start).count());
+        
+        // Track peak memory
+        double mem_current = getCurrentMemoryMB();
+        if (mem_current > mem_peak) mem_peak = mem_current;
+#endif
 
         // Print progress (if verbose mode enabled)
         if (config.verbose && (step % 1 == 0 || step == config.mpc.sim_steps - 1)) {
@@ -122,6 +178,50 @@ int main() {
 
     std::cout << "Simulation completed in " << duration.count() << " ms\n";
     std::cout << "Average step time: " << duration.count() / (double)config.mpc.sim_steps << " ms\n";
+
+#ifdef ENABLE_PROFILING
+    double mem_final = getCurrentMemoryMB();
+    
+    std::cout << "\n=== Performance Profiling ===" << std::endl;
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "\n--- Timing Summary ---" << std::endl;
+    std::cout << std::left << std::setw(20) << "Function"
+              << std::right << std::setw(8) << "Calls"
+              << std::setw(12) << "Total(ms)"
+              << std::setw(12) << "Avg(ms)"
+              << std::setw(12) << "Min(ms)"
+              << std::setw(12) << "Max(ms)" << std::endl;
+    std::cout << std::string(76, '-') << std::endl;
+    
+    for (const auto& entry : prof_data) {
+        const std::string& name = entry.first;
+        const std::vector<double>& times = entry.second.times;
+        
+        if (times.empty()) continue;
+        
+        double total = 0.0, min = times[0], max = times[0];
+        for (double t : times) {
+            total += t;
+            if (t < min) min = t;
+            if (t > max) max = t;
+        }
+        double avg = total / times.size();
+        
+        std::cout << std::left << std::setw(20) << name
+                  << std::right << std::setw(8) << times.size()
+                  << std::setw(12) << total
+                  << std::setw(12) << avg
+                  << std::setw(12) << min
+                  << std::setw(12) << max << std::endl;
+    }
+    
+    std::cout << "\n--- Memory Summary ---" << std::endl;
+    std::cout << "Initial:  " << mem_initial << " MB" << std::endl;
+    std::cout << "Peak:     " << mem_peak << " MB" << std::endl;
+    std::cout << "Final:    " << mem_final << " MB" << std::endl;
+    std::cout << "Leaked:   " << (mem_final - mem_initial) << " MB" << std::endl;
+    std::cout << "==========================" << std::endl;
+#endif
 
     return 0;
 }

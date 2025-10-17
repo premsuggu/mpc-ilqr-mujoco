@@ -56,5 +56,5 @@ paths:
 
 logging:
   verbose: true             # Print detailed progress
-  save_trajectories: true   # Save optimal trajectories to file
+  save_trajectories: false   # Save optimal trajectories to file
   results_path: "results"   # Directory for trajectory logging

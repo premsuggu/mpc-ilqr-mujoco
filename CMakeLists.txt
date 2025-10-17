@@ -42,3 +42,12 @@ target_link_libraries(humanoid_mpc
 
 # Compiler flags for main executable only
 target_compile_options(humanoid_mpc PRIVATE -O3)
+
+# Optional profiling flag (OFF by default for zero overhead)
+option(ENABLE_PROFILING "Enable performance profiling" OFF)
+if(ENABLE_PROFILING)
+    target_compile_definitions(humanoid_mpc PRIVATE ENABLE_PROFILING)
+    message(STATUS "Performance profiling: ENABLED")
+else()
+    message(STATUS "Performance profiling: DISABLED (use -DENABLE_PROFILING=ON to enable)")
+endif()

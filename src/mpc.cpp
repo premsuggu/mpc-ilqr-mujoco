@@ -3,6 +3,15 @@
 #include <iostream>
 #include <chrono>
 
+#ifdef ENABLE_PROFILING
+#include <map>
+#include <vector>
+struct ProfileData {
+    std::vector<double> times;
+};
+extern std::map<std::string, ProfileData> prof_data;
+#endif
+
 // Constructor
 MPC::MPC(RobotUtils& robot, int N, double dt, const std::string& urdf_path) 
         : robot_(robot), ilqr_(robot, N, dt, urdf_path), N_(N), dt_(dt), 
@@ -29,19 +38,47 @@ MPC::MPC(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
 }
 
 bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) {
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time = std::chrono::steady_clock::now();
     try {
         // Grab the right reference window for this step
+#ifdef ENABLE_PROFILING
+        auto t_extract_start = std::chrono::steady_clock::now();
+#endif
         extractReferenceWindow();
+#ifdef ENABLE_PROFILING
+        auto t_extract_end = std::chrono::steady_clock::now();
+        prof_data["MPC_extractReference"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_extract_end - t_extract_start).count());
+#endif
+        
         // Warm start iLQR if we have a previous solution
+#ifdef ENABLE_PROFILING
+        auto t_warm_start = std::chrono::steady_clock::now();
+#endif
         if (has_prev_solution_) {
             ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, &prev_xbar_, &prev_ubar_);
         } else {
             ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_);
         }
+#ifdef ENABLE_PROFILING
+        auto t_warm_end = std::chrono::steady_clock::now();
+        prof_data["MPC_warmStart"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_warm_end - t_warm_start).count());
+#endif
+        
         // Run iLQR
         double solve_cost;
-        bool success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, solve_cost);
+        bool success;
+#ifdef ENABLE_PROFILING
+        auto t_solve_start = std::chrono::steady_clock::now();
+#endif
+        success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, solve_cost);
+#ifdef ENABLE_PROFILING
+        auto t_solve_end = std::chrono::steady_clock::now();
+        prof_data["MPC_iLQR_solve"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_solve_end - t_solve_start).count());
+#endif
+        
         if (!success) {
             std::cerr << "iLQR solve failed at time index " << t_idx_ << std::endl;
             // If iLQR fails, use previous control or zero
@@ -52,19 +89,29 @@ bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) 
             }
             return false;
         }
+        
         // Compute TV-LQR control law
+#ifdef ENABLE_PROFILING
+        auto t_control_start = std::chrono::steady_clock::now();
+#endif
         const auto& xbar = ilqr_.xbar();
         const auto& ubar = ilqr_.ubar();
         const auto& K = ilqr_.gainsK();
         Eigen::VectorXd x_err = x_measured - xbar[0];
         u_apply = ubar[0] + K[0] * x_err;
+#ifdef ENABLE_PROFILING
+        auto t_control_end = std::chrono::steady_clock::now();
+        prof_data["MPC_computeControl"].times.push_back(
+            std::chrono::duration<double, std::milli>(t_control_end - t_control_start).count());
+#endif
+        
         // Save solution for next time
         prev_xbar_ = xbar;
         prev_ubar_ = ubar;
         prev_K_ = K;
         has_prev_solution_ = true;
         last_solve_cost_ = solve_cost;
-        auto end_time = std::chrono::high_resolution_clock::now();
+        auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         last_solve_time_ms_ = duration.count() / 1000.0;
         t_idx_++;
