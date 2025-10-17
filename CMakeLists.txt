@@ -4,40 +4,33 @@ project(humanoid_mpc LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Suppress warnings from external libraries - platform specific
+# Suppress/adjust warnings by compiler
 if(MSVC)
-    # Windows: Suppress all warnings with /w
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /w")
+    # MSVC: disable warnings, optimize, allow big object files, and parallel compilation
+    add_compile_options(/W0 /O2 /bigobj /MP)
 else()
-    # Linux/macOS: Suppress warnings with -w
+    # GCC/Clang
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
 endif()
 
-# Platform-specific setup for conda environment
+# Find packages in conda environment
 if(DEFINED ENV{CONDA_PREFIX})
     set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX};${CMAKE_PREFIX_PATH}")
-    
+    # Typical Unix-like layout
+    include_directories("$ENV{CONDA_PREFIX}/include")
+    include_directories("$ENV{CONDA_PREFIX}/include/eigen3")
+    link_directories("$ENV{CONDA_PREFIX}/lib")
+    # Conda on Windows uses Library/include and Library/lib
     if(WIN32)
-        # Windows: conda packages are in Library subdirectory
         include_directories("$ENV{CONDA_PREFIX}/Library/include")
         include_directories("$ENV{CONDA_PREFIX}/Library/include/eigen3")
         link_directories("$ENV{CONDA_PREFIX}/Library/lib")
-        set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}/Library;${CMAKE_PREFIX_PATH}")
-    else()
-        # Linux/macOS: standard paths
-        include_directories("$ENV{CONDA_PREFIX}/include")
-        include_directories("$ENV{CONDA_PREFIX}/include/eigen3")
-        link_directories("$ENV{CONDA_PREFIX}/lib")
+        add_definitions(-DNOMINMAX)
     endif()
 endif()
 
-# Include project headers
+# Include directories
 include_directories(include)
-
-# Find required packages (let CMake locate them)
-find_package(pinocchio QUIET)
-find_package(casadi QUIET)
-find_package(yaml-cpp QUIET)
 
 # Main executable only
 add_executable(humanoid_mpc
@@ -49,62 +42,34 @@ add_executable(humanoid_mpc
     app/humanoid_mpc.cpp
 )
 
-# Explicitly set include directories for all dependencies (critical for Windows)
-if(pinocchio_FOUND)
-    target_include_directories(humanoid_mpc PRIVATE ${pinocchio_INCLUDE_DIRS})
-    message(STATUS "Pinocchio include dirs: ${pinocchio_INCLUDE_DIRS}")
-endif()
-
-if(casadi_FOUND)
-    target_include_directories(humanoid_mpc PRIVATE ${casadi_INCLUDE_DIRS})
-    message(STATUS "CasADi include dirs: ${casadi_INCLUDE_DIRS}")
-endif()
-
-if(yaml-cpp_FOUND)
-    target_include_directories(humanoid_mpc PRIVATE ${yaml-cpp_INCLUDE_DIRS})
-    message(STATUS "yaml-cpp include dirs: ${yaml-cpp_INCLUDE_DIRS}")
-endif()
-
-# Find OpenGL (optional for headless CI environments)
-find_package(OpenGL)
-if(OPENGL_FOUND)
-    set(OPENGL_LIBS ${OPENGL_LIBRARIES})
-else()
-    message(WARNING "OpenGL not found - visualization may not work")
-    set(OPENGL_LIBS "")
-endif()
-
-# Platform-specific libraries
-if(UNIX AND NOT APPLE)
-    # Linux
-    set(PLATFORM_LIBS pthread dl)
-elseif(APPLE)
-    # macOS
-    set(PLATFORM_LIBS pthread dl)
-elseif(WIN32)
-    # Windows
-    set(PLATFORM_LIBS "")
-endif()
-
 # Link libraries
-target_link_libraries(humanoid_mpc 
-    mujoco 
-    pinocchio_default 
-    pinocchio_parsers 
-    pinocchio_casadi 
+# GLFW library name differs across platforms in Conda (glfw on Unix, glfw3dll on Windows)
+set(GLFW_LIB_NAME glfw)
+if(WIN32)
+    # Conda-forge provides glfw3dll.lib on Windows
+    set(GLFW_LIB_NAME glfw3dll)
+endif()
+
+target_link_libraries(humanoid_mpc
+    mujoco
+    pinocchio_default
+    pinocchio_parsers
+    pinocchio_casadi
     casadi
-    glfw
-    ${OPENGL_LIBS}
-    ${PLATFORM_LIBS}
     yaml-cpp
+    ${GLFW_LIB_NAME}
 )
 
-# Compiler flags - platform specific
-if(MSVC)
-    # Windows: Use MSVC optimization flags
-    target_compile_options(humanoid_mpc PRIVATE /O2 /W0)
-else()
-    # Linux/macOS: Use GCC/Clang flags
+if(UNIX AND NOT APPLE)
+    # Linux-specific system libs
+    target_link_libraries(humanoid_mpc GL pthread dl)
+elseif(WIN32)
+    # Windows system libs typically required by OpenGL/GLFW
+    target_link_libraries(humanoid_mpc opengl32 user32 gdi32 shell32)
+endif()
+
+# Compiler flags for main executable only
+if(NOT MSVC)
     target_compile_options(humanoid_mpc PRIVATE -O3)
 endif()
 
