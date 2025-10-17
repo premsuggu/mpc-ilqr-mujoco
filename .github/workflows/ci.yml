@@ -2,7 +2,7 @@ name: Cross-Platform Build and Test
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -49,45 +49,25 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake pkg-config
-        sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev
+        sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev mesa-common-dev
         sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-        sudo apt-get install -y mesa-common-dev libglfw3-dev
-        sudo apt-get install -y xvfb
+        sudo apt-get install -y libglfw3-dev xvfb
+        sudo apt-get install -y liburdfdom-dev libboost-all-dev
         
     - name: Install system dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
         echo "Dependencies managed by conda"
         
-    - name: Configure CMake (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Configure CMake (All platforms - matching README)
       shell: bash -el {0}
       run: |
-        mkdir -p build
-        cd build
-        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
         
-    - name: Configure CMake (Linux/macOS)
-      if: matrix.os != 'windows-latest'
+    - name: Build (All platforms - matching README)
       shell: bash -el {0}
       run: |
-        mkdir -p build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
-        
-    - name: Build (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: bash -el {0}
-      run: |
-        cd build
-        cmake --build . --config Release --parallel 4
-        
-    - name: Build (Linux/macOS)
-      if: matrix.os != 'windows-latest'
-      shell: bash -el {0}
-      run: |
-        cd build
-        make -j4
+        cmake --build build --config Release --parallel 4
         
     - name: Verify build output
       shell: bash -el {0}
