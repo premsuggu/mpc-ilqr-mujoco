@@ -28,6 +28,27 @@ add_executable(humanoid_mpc
     app/humanoid_mpc.cpp
 )
 
+# Find OpenGL (optional for headless CI environments)
+find_package(OpenGL)
+if(OPENGL_FOUND)
+    set(OPENGL_LIBS ${OPENGL_LIBRARIES})
+else()
+    message(WARNING "OpenGL not found - visualization may not work")
+    set(OPENGL_LIBS "")
+endif()
+
+# Platform-specific libraries
+if(UNIX AND NOT APPLE)
+    # Linux
+    set(PLATFORM_LIBS pthread dl)
+elseif(APPLE)
+    # macOS
+    set(PLATFORM_LIBS pthread dl)
+elseif(WIN32)
+    # Windows
+    set(PLATFORM_LIBS "")
+endif()
+
 # Link libraries
 target_link_libraries(humanoid_mpc 
     mujoco 
@@ -36,7 +57,8 @@ target_link_libraries(humanoid_mpc
     pinocchio_casadi 
     casadi
     glfw
-    GL pthread dl
+    ${OPENGL_LIBS}
+    ${PLATFORM_LIBS}
     yaml-cpp
 )
 

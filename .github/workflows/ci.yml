@@ -37,13 +37,22 @@ jobs:
         conda list
         echo "CONDA_PREFIX: $CONDA_PREFIX"
         
+    - name: Install additional conda packages for CI
+      shell: bash -el {0}
+      run: |
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          conda install -c conda-forge mesa-libgl-devel-cos7-x86_64 -y || true
+        fi
+        
     - name: Install system dependencies (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake pkg-config xvfb
-        sudo apt-get install -y libgl-dev libglu1-mesa-dev libx11-dev
+        sudo apt-get install -y build-essential cmake pkg-config
+        sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev
+        sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
         sudo apt-get install -y mesa-common-dev libglfw3-dev
+        sudo apt-get install -y xvfb
         
     - name: Install system dependencies (macOS)
       if: matrix.os == 'macos-latest'
@@ -64,15 +73,7 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-          # Force OpenGL library paths for Ubuntu CI
-          cmake .. -DCMAKE_BUILD_TYPE=Release \
-            -DOpenGL_GL_PREFERENCE=GLVND \
-            -DOPENGL_INCLUDE_DIR=/usr/include \
-            -DOPENGL_gl_LIBRARY=/usr/lib/x86_64-linux-gnu/libGL.so
-        else
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-        fi
+        cmake .. -DCMAKE_BUILD_TYPE=Release
         
     - name: Build (Windows)
       if: matrix.os == 'windows-latest'

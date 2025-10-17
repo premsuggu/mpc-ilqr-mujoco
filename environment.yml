@@ -24,10 +24,11 @@ dependencies:
   - ninja  # Fast build system
   - pkg-config
   
-  # C++ compiler toolchain (cross-platform)
+    # C++ compiler toolchain (cross-platform)
   - cxx-compiler  # Automatically installs appropriate C++ compiler for platform
   - eigen  # Linear algebra library (C++)
   - glfw  # OpenGL windowing library (C++)
+  - mesalib  # OpenGL implementation (for headless/CI environments)
   
   # Configuration file handling
   - conda-forge::yaml-cpp  # C++ YAML parser
