@@ -32,44 +32,60 @@ A cross-platform implementation of Model Predictive Control for humanoid robots 
 # 1. Install system dependencies
 sudo apt update
 sudo apt install build-essential cmake git
+```
 
+```bash
 # 2. Clone repository
 git clone https://github.com/premsuggu/Mujoco-MPC.git
 cd Mujoco-MPC
+```
 
+```bash
 # 3. Create conda environment (installs all C++ and Python dependencies)
 conda env create -f environment.yml
 conda activate humanoid-mpc
+```
 
+```bash
 # 4. Build the project
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j$(nproc)
+```
 
+```bash
 # 5. Run MPC simulation
 ./build/humanoid_mpc
 ```
+
 
 ### **macOS**
 
 ```bash
 # 1. Install Xcode Command Line Tools
 xcode-select --install
+```
 
+```bash
 # 2. Install Homebrew (if not already installed)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
+```bash
 # 3. Clone repository
 git clone https://github.com/premsuggu/Mujoco-MPC.git
 cd Mujoco-MPC
-
+```
+```bash
 # 4. Create conda environment
 conda env create -f environment.yml
 conda activate humanoid-mpc
-
+```
+```bash
 # 5. Build the project
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j$(sysctl -n hw.ncpu)
-
+```
+```bash
 # 6. Run MPC simulation
 ./build/humanoid_mpc
 ```
@@ -85,19 +101,23 @@ cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 # Download from: https://git-scm.com/download/win
 
 # 3. Open Anaconda PowerShell Prompt (or Command Prompt) as Administrator
-
+```
+```powershell
 # 4. Clone repository
 git clone https://github.com/premsuggu/Mujoco-MPC.git
 cd Mujoco-MPC
-
+```
+```powershell
 # 5. Create conda environment
 conda env create -f environment.yml
 conda activate humanoid-mpc
-
+```
+```powershell
 # 6. Build the project (using Visual Studio)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j %NUMBER_OF_PROCESSORS%
-
+```
+```powershell
 # 7. Run MPC simulation
 build\Release\humanoid_mpc.exe
 ```
@@ -132,8 +152,8 @@ Model loaded: nx=51, nu=19
 MPC initialized with N=25, dt=0.02
 Step 0/15 | Cost: 16.27 | (X,Y,Z): (0,0,1.043) m | Control range: [-4.84, 0.56]
 ...
-Simulation completed in 120000 ms
-Average step time: 8000 ms
+Simulation completed in 24728 ms
+Average step time: 2472.80 ms
 ```
 
 ### 2. Visualize Results in 3D
@@ -177,40 +197,35 @@ build\Release\humanoid_mpc.exe  # Windows
 --- Timing Summary ---
 Function               Calls   Total(ms)     Avg(ms)     Min(ms)     Max(ms)
 ----------------------------------------------------------------------------
-MPC_stepOnce              15   118450.07     7896.67     3912.85    13790.75
-MPC_iLQR_solve            15   118422.07     7894.80     3912.06    13789.90
-iLQR_linearization        89    98263.22     1104.08      858.40     1325.65
-iLQR_costQuadratics       89    11469.46      128.87       99.70      155.34
-iLQR_lineSearch          101     6640.49       65.75       12.02      159.81
+MPC_computeControl        10        0.01        0.00        0.00        0.00
+MPC_extractReference      10        0.05        0.01        0.00        0.01
+MPC_iLQR_solve            10    24720.71     2472.07     1228.29     3067.83
+MPC_stepOnce              10    24726.70     2472.67     1228.46     3072.27
+MPC_warmStart             10        5.75        0.57        0.13        4.41
+iLQR_backwardPass         90      206.22        2.29        2.05        3.67
 ...
 
 --- Memory Summary ---
-Initial:  54.95 MB
-Peak:     57.45 MB
-Final:    57.45 MB
-Leaked:   2.50 MB
+Initial:  404.76 MB
+Peak:     407.26 MB
+Final:    407.26 MB
 ```
 
 **📈 Interpreting Profiling Results:**
 
 **Timing Breakdown:**
 - **MPC_stepOnce**: Total time for one MPC control step (including all iLQR iterations)
-- **iLQR_linearization**: Computing dynamics Jacobians A_t, B_t (~83% of total time)
+- **iLQR_linearization**: Computing dynamics Jacobians A_t, B_t 
   - This is the main bottleneck due to finite difference computations in MuJoCo
-- **iLQR_costQuadratics**: Computing Q, R cost matrices (~10% of total time)
-- **iLQR_lineSearch**: Forward rollout to find optimal step size (~6% of time)
-- **Calls**: Number of times each function was called (varies by convergence)
+- **iLQR_costQuadratics**: Computing Q, R cost matrices
+- **iLQR_lineSearch**: Forward rollout to find optimal step size
+- **Calls**: Number of times each function was called
 
 **Memory Metrics:**
 - **Initial**: RSS (Resident Set Size) at program start after model loading
 - **Peak**: Maximum memory usage during simulation
 - **Final**: Memory usage at program exit
-- **Leaked**: Difference between Final and Initial (small leaks ~2-3 MB are normal due to caching)
-
-**Performance Tips:**
-- If linearization takes >90% of time: Consider reducing prediction horizon N
-- If memory grows over time: Check for large matrix allocations in iLQR loop
-- Use `Avg(ms)` to identify consistent bottlenecks vs `Max(ms)` for outliers
+- **Leaked**: Difference between Final and Initial (small leaks ~2-3 MB are expected)
 
 ## 📊 Project Structure
 
@@ -255,7 +270,7 @@ mujoco_mpc/
 
 ### **iLQR Optimization**
 - **Method**: Iterative Linear Quadratic Regulator with line search
-- **Iterations**: Typically 5-10 per MPC step
+- **Iterations**: 1 in most of the cases. 
 - **Convergence**: Stops when cost improvement < 1e-4
 - **Regularization**: Adaptive λ ∈ [1e-6, 1e-3]
 
@@ -269,15 +284,12 @@ J = Σ(||x - x_ref||²_Q + ||u||²_R) + ||x_N - x_ref_N||²_Qf
 ### **Dynamics Linearization**
 - **Method**: Finite differences using MuJoCo's `mj_forward`
 - **Jacobians**: A_t (51×51), B_t (51×19) computed at each timestep
-- **Bottleneck**: Linearization takes ~83% of total computation time
 
-### **Symbolic Derivatives** (Fast!)
-- **CoM Jacobian**: Pinocchio analytical computation (~1ms)
-- **End-effector Jacobian**: CasADi automatic differentiation (~2ms)
-- **10-30x faster** than finite differences for cost derivatives
+### **Symbolic Derivatives**
+- **CoM Jacobian & Hessian**: Pinocchio analytical computation
+- **End-effector Jacobian & Hessian**: CasADi automatic differentiation
 
 ## ⚙️ Configuration
-
 All MPC parameters are defined in `config.yaml`:
 
 ### **Key Parameters**
@@ -297,34 +309,12 @@ mpc:
     W_foot: 500.0          # Foot position tracking weight
 ```
 
-### **Tuning Guide**
-
-- **Increase `Q_position_z`** → Tighter height control (may cause oscillations)
-- **Increase `Q_joint_vel`** → Smoother motions (slower response)
-- **Decrease `R_control`** → More aggressive control (higher torques)
-- **Increase `W_com`** → Better CoM tracking (may conflict with joint tracking)
 
 ### **Reference Trajectories**
 
-- **Standing pose**: `data/q_standing.csv` - All joints at 0° except base height (Z = 1.0432m)
-- **Walking motion** (future work): `data/q_ref.csv` and `data/v_ref.csv`
-
-## 📈 Performance
-
-**Hardware:** Typical modern laptop (Intel i7, 16GB RAM)
-
-**Computational Breakdown:**
-- **iLQR Linearization**: 75-100 seconds (83% of time) - Bottleneck!
-- **Cost Quadratics**: 11-12 seconds (10%)
-- **Line Search**: 5-7 seconds (5%)
-- **Backward Pass**: 0.5-0.6 seconds (0.5%)
-- **Other**: < 1 second
-
-**Typical Results:**
-- **Tracking Error**: <1cm RMS position error, <3° orientation error
-- **Balance Duration**: >15 seconds stable standing
-- **MPC Step Time**: 5-8 seconds (not real-time, but faster than brute-force)
-- **Memory Usage**: ~55-58 MB (no memory leaks)
+- **Standing pose**: `data/q_standing.csv` - All joints at 0° except base height (Z = 1.0432m for unitree h1)
+- **Walking motion** (for future use): `data/q_ref.csv` and `data/v_ref.csv`
+- **Others**: Reference trajectories in `.h5` and `.npz` format
 
 ## 🐛 Troubleshooting
 
@@ -387,6 +377,7 @@ cd /path/to/Mujoco-MPC
 git pull origin feature/cost-terms
 cmake --build build --config Release
 ```
+<!--
 
 ### **Performance Issues**
 
@@ -414,9 +405,9 @@ cmake --build build --config Release
 **Windows:**
 - **Antivirus blocking**: Add project folder to Windows Defender exclusions
 - **Path too long error**: Move project closer to C:\ drive root
+-->
 
 ## 🔬 Development
-
 ### **Adding Custom Cost Terms**
 
 Edit `src/ilqr.cpp` in `computeCostQuadratics()`:
@@ -454,8 +445,7 @@ cmake --build build
 
 # Check output for anomalies:
 # - All times should be positive
-# - Memory should be stable (~55-60 MB)
-# - Robot should not fall (Z > 0.5m throughout)
+# - Memory should be stable
 ```
 
 ## 📚 Dependencies
@@ -498,5 +488,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For questions or issues, please open a [GitHub Issue](https://github.com/premsuggu/Mujoco-MPC/issues).
 
 ---
-
-**Built with ❤️ for robotics research and education**

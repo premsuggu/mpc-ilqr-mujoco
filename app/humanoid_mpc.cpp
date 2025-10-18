@@ -1,187 +1,191 @@
-// app/humanoid_mpc.cpp
 #include "robot_utils.hpp"
 #include "ilqr.hpp"
 #include "mpc.hpp"
 #include "config.hpp"
 #include <iostream>
-#include <fstream>
 #include <chrono>
 #include <map>
 #include <vector>
 
 #ifdef ENABLE_PROFILING
+#include <fstream>
 #include <sstream>
 #include <iomanip>
 
-// Simple profiling data structure
+// Platform-specific includes for memory usage
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#endif
+
+// Simple profiling data structure and global map
 struct ProfileData {
     std::vector<double> times;
 };
 std::map<std::string, ProfileData> prof_data;
+double mem_peak = 0.0; // Global variable to track peak memory
 
-// Get current memory usage in MB from /proc/self/status
 double getCurrentMemoryMB() {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+        return static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0); // Convert bytes to MB
+    }
+    return 0.0;
+#else // for Linux and other Unix-like systems
     std::ifstream status("/proc/self/status");
     std::string line;
     while (std::getline(status, line)) {
         if (line.substr(0, 6) == "VmRSS:") {
             std::istringstream iss(line);
-            std::string label, unit;
+            std::string label;
             size_t value;
-            iss >> label >> value >> unit;
-            return value / 1024.0;  // Convert KB to MB
+            iss >> label >> value;
+            return value / 1024.0; // Convert KB to MB
         }
     }
     return 0.0;
+#endif
 }
 #endif
 
+// FUNCTION PROTOTYPES
 
+void setupSimulation(RobotUtils& robot, Config& config);
+void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config);
+#ifdef ENABLE_PROFILING
+void printProfilingResults();
+#endif
+
+ 
+// MAIN FUNCTION
 int main() {
-    
     Config config = loadConfigFromFile("config.yaml");
-    std::cout << "Configuration loaded from config.yaml" << std::endl;
+    std::cout << "Configuration loaded successfully from config.yaml" << std::endl;
 
     RobotUtils robot;
-    if (!robot.loadModel(config.model_path)) {
-        std::cerr << "Failed to load robot model from: " << config.model_path << std::endl;
-        return 1;
-    }
+    setupSimulation(robot, config);
+    MPC mpc(robot, config.mpc.horizon, config.mpc.dt, config.urdf_path);
 
-    // Set simulation parameters
+    #ifdef ENABLE_PROFILING
+        double mem_initial = getCurrentMemoryMB();
+        mem_peak = mem_initial; // Initialize peak memory
+        std::cout << "=== Profiling ENABLED ===" << std::endl;
+        std::cout << "Initial memory: " << std::fixed << std::setprecision(2) << mem_initial << " MB" << std::endl;
+    #endif
+
+    runSimulation(robot, mpc, config);
+
+    #ifdef ENABLE_PROFILING
+        double mem_final = getCurrentMemoryMB();
+        printProfilingResults();
+        std::cout << "\n--- Memory Summary ---" << std::endl;
+        std::cout << "Initial:  " << std::fixed << std::setprecision(2) << mem_initial << " MB" << std::endl;
+        std::cout << "Peak:     " << std::fixed << std::setprecision(2) << mem_peak << " MB" << std::endl;
+        std::cout << "Final:    " << std::fixed << std::setprecision(2) << mem_final << " MB" << std::endl;
+        std::cout << "==========================" << std::endl;
+    #endif
+
+    return 0;
+}
+
+ 
+// SETUP FUNCTION
+void setupSimulation(RobotUtils& robot, Config& config) {
+    if (!robot.loadModel(config.model_path)) {
+        throw std::runtime_error("Failed to load robot model from: " + config.model_path);
+    }
     robot.setContactImpratio(config.mpc.contact_impratio);
     robot.setTimeStep(config.mpc.physics_dt);
     robot.setGravity(config.mpc.gravity[0], config.mpc.gravity[1], config.mpc.gravity[2]);
-    
-    // Start in standing pose
     robot.initializeStandingPose();
-
-    std::cout << "Model loaded: nx=" << robot.nx() << ", nu=" << robot.nu() << "\n";
-
+    std::cout << "Model loaded: nx=" << robot.nx() << ", nu=" << robot.nu() << std::endl;
     config.buildCostMatrices(robot.nx(), robot.nu(), robot.nq());
-    
     robot.setCostWeights(config.Q, config.R, config.Qf);
     robot.setCoMWeight(config.mpc.costs.W_com);
     robot.setEEPosWeight(config.mpc.costs.W_foot);
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);
-
-    // Load reference trajectories
     if (!robot.loadReferences(config.q_ref_path, config.v_ref_path)) {
-        std::cerr << "Failed to load reference trajectories\n";
-        return 1;
+        throw std::runtime_error("Failed to load reference trajectories.");
     }
+}
 
-    MPC mpc(robot, config.mpc.horizon, config.mpc.dt, config.urdf_path);
-
-    // Enable trajectory logging if configured
+ 
+// SIMULATION LOOP FUNCTION
+void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config) {
     if (config.save_trajectories) {
         mpc.enableOptimalTrajectoryLogging(config.results_path);
     }
 
     auto start_time = std::chrono::high_resolution_clock::now();
+    int physics_steps_per_mpc = static_cast<int>(config.mpc.dt / config.mpc.physics_dt);
 
-#ifdef ENABLE_PROFILING
-    double mem_initial = getCurrentMemoryMB();
-    double mem_peak = mem_initial;
-    std::cout << "=== Profiling ENABLED ===" << std::endl;
-    std::cout << "Initial memory: " << mem_initial << " MB" << std::endl;
-#endif
-
-    int physics_steps_per_mpc = (int)(config.mpc.dt / config.mpc.physics_dt);
     for (int step = 0; step < config.mpc.sim_steps; ++step) {
-        // Grab the current state
         Eigen::VectorXd x_current(robot.nx());
         robot.getState(x_current);
 
-        // Enhanced stability checks
         if (!x_current.allFinite()) {
-            std::cerr << "NaN detected in state at step " << step << ", breaking simulation" << std::endl;
+            std::cerr << "NaN detected in state at step " << step << ", breaking." << std::endl;
             break;
         }
 
-        // Run one step of MPC
         Eigen::VectorXd u_apply(robot.nu());
-#ifdef ENABLE_PROFILING
-        auto t_mpc_start = std::chrono::steady_clock::now();
-#endif
+        #ifdef ENABLE_PROFILING
+            auto t_mpc_start = std::chrono::steady_clock::now();
+        #endif
         bool success = mpc.stepOnce(x_current, u_apply);
-#ifdef ENABLE_PROFILING
-        auto t_mpc_end = std::chrono::steady_clock::now();
-        prof_data["MPC_stepOnce"].times.push_back(
-            std::chrono::duration<double, std::milli>(t_mpc_end - t_mpc_start).count());
-#endif
+        #ifdef ENABLE_PROFILING
+            auto t_mpc_end = std::chrono::steady_clock::now();
+            prof_data["MPC_stepOnce"].times.push_back(std::chrono::duration<double, std::milli>(t_mpc_end - t_mpc_start).count());
+            
+            // Track peak memory within the loop
+            double mem_current = getCurrentMemoryMB();
+            if (mem_current > mem_peak) mem_peak = mem_current;
+        #endif
 
         if (!success) {
-            std::cerr << "MPC failed at step " << step << ", using gravity compensation only" << std::endl;
-            // Use gravity compensation as fallback instead of zero control
+            std::cerr << "MPC failed at step " << step << ", using gravity compensation." << std::endl;
             mj_forward(robot.model(), robot.data());
             for (int i = 0; i < robot.nu(); ++i) {
-                int joint_id = robot.model()->actuator_trnid[i * 2];
-                int qpos_addr = robot.model()->jnt_qposadr[joint_id];
-                u_apply(i) = robot.data()->qfrc_bias[qpos_addr] * 0.5;  // Conservative gravity comp
+                u_apply(i) = robot.data()->qfrc_bias[i + 6];
             }
-            
-            if (step > 15) {  // Give more attempts before giving up
-                break;
-            }
+            if (step > 15) break;
         }
 
-        // If control is NaN, zero it out
         if (!u_apply.allFinite()) {
-            std::cerr << "NaN detected in control at step " << step << ", using zero control" << std::endl;
+            std::cerr << "NaN in control at step " << step << ", using zero control." << std::endl;
             u_apply.setZero();
         }
 
         robot.setControl(u_apply);
-        // Recompute contacts after changing control
-        mj_forward(robot.model(), robot.data());
-#ifdef ENABLE_PROFILING
-        auto t_phys_start = std::chrono::steady_clock::now();
-#endif
         for (int sub_step = 0; sub_step < physics_steps_per_mpc; ++sub_step) {
             robot.step();
         }
-#ifdef ENABLE_PROFILING
-        auto t_phys_end = std::chrono::steady_clock::now();
-        prof_data["Physics_steps"].times.push_back(
-            std::chrono::duration<double, std::milli>(t_phys_end - t_phys_start).count());
-        
-        // Track peak memory
-        double mem_current = getCurrentMemoryMB();
-        if (mem_current > mem_peak) mem_peak = mem_current;
-#endif
 
-        // Print progress (if verbose mode enabled)
-        if (config.verbose && (step % 1 == 0 || step == config.mpc.sim_steps - 1)) {
-            double current_cost = mpc.getLastSolveCost();
-            double z_position = x_current(2);
-            double x_position = x_current(0);
-            double y_position = x_current(1);
-            double u_min = u_apply.minCoeff();
-            double u_max = u_apply.maxCoeff();
-
+        if (config.verbose) {
+            double cost = mpc.getLastSolveCost();
             std::cout << "Step " << step << "/" << config.mpc.sim_steps
-                      << " | Cost: " << current_cost
-                      << " | (X,Y,Z): (" << x_position << "," << y_position << "," << z_position << ") m"
-                      << " | Control range: [" << u_min << ", " << u_max << "]"
-                      << std::endl;
+                      << " | Cost: " << cost
+                      << " | (X,Y,Z): (" << x_current(0) << "," << x_current(1) << "," << x_current(2) << ") m"
+                      << " | Control range: [" << u_apply.minCoeff() << ", " << u_apply.maxCoeff() << "]" << std::endl;
         }
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-
-    // Finalize trajectory logging if enabled
+    
     if (config.save_trajectories) {
         mpc.finalizeOptimalTrajectoryLog();
     }
 
     std::cout << "Simulation completed in " << duration.count() << " ms\n";
-    std::cout << "Average step time: " << duration.count() / (double)config.mpc.sim_steps << " ms\n";
+    std::cout << "Average step time: " << duration.count() / static_cast<double>(config.mpc.sim_steps) << " ms\n";
+}
 
+
+// PROFILING RESULTS FUNCTION
 #ifdef ENABLE_PROFILING
-    double mem_final = getCurrentMemoryMB();
-    
+void printProfilingResults() {
     std::cout << "\n=== Performance Profiling ===" << std::endl;
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "\n--- Timing Summary ---" << std::endl;
@@ -192,36 +196,25 @@ int main() {
               << std::setw(12) << "Min(ms)"
               << std::setw(12) << "Max(ms)" << std::endl;
     std::cout << std::string(76, '-') << std::endl;
-    
+
     for (const auto& entry : prof_data) {
-        const std::string& name = entry.first;
-        const std::vector<double>& times = entry.second.times;
-        
+        const auto& times = entry.second.times;
         if (times.empty()) continue;
-        
-        double total = 0.0, min = times[0], max = times[0];
+
+        double total = 0.0, min_t = times[0], max_t = times[0];
         for (double t : times) {
             total += t;
-            if (t < min) min = t;
-            if (t > max) max = t;
+            if (t < min_t) min_t = t;
+            if (t > max_t) max_t = t;
         }
         double avg = total / times.size();
-        
-        std::cout << std::left << std::setw(20) << name
+
+        std::cout << std::left << std::setw(20) << entry.first
                   << std::right << std::setw(8) << times.size()
                   << std::setw(12) << total
                   << std::setw(12) << avg
-                  << std::setw(12) << min
-                  << std::setw(12) << max << std::endl;
+                  << std::setw(12) << min_t
+                  << std::setw(12) << max_t << std::endl;
     }
-    
-    std::cout << "\n--- Memory Summary ---" << std::endl;
-    std::cout << "Initial:  " << mem_initial << " MB" << std::endl;
-    std::cout << "Peak:     " << mem_peak << " MB" << std::endl;
-    std::cout << "Final:    " << mem_final << " MB" << std::endl;
-    std::cout << "Leaked:   " << (mem_final - mem_initial) << " MB" << std::endl;
-    std::cout << "==========================" << std::endl;
-#endif
-
-    return 0;
 }
+#endif

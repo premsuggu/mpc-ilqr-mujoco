@@ -17,8 +17,8 @@ mpc:
   horizon: 25              # MPC prediction horizon (N)
   dt: 0.02                 # MPC timestep (50 Hz)
   physics_dt: 0.02         # Physics engine timestep
-  gravity: [0.0, 0.0, -5.0]  # World gravity [x, y, z]
-  sim_steps: 50            # Total simulation steps
+  gravity: [0.0, 0.0, -6.0]  # World gravity [x, y, z]
+  sim_steps: 10            # Total simulation steps
   contact_impratio: 100.0  # Contact stiffness for stability
 
   cost_weights:
