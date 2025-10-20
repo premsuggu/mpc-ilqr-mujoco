@@ -6,7 +6,8 @@
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
-      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_joint_limits_(500.0), w_control_limits_(1000.0) {
+      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_ee_pos_(0.0), w_ee_vel_(0.0), 
+      w_joint_limits_(500.0), w_control_limits_(1000.0) {
 }
 
 RobotUtils::~RobotUtils() {
@@ -298,9 +299,14 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
     ee_pos_ref_full_.clear();
     ee_vel_ref_full_.clear();
     
+    // Temporary storage for all positions (for velocity computation)
+    std::vector<std::vector<double>> all_q_vals;
+    std::vector<std::vector<double>> all_v_vals;
+    
     std::string q_line, v_line;
     int line_count = 0;
     
+    // First pass: load all data
     while (std::getline(q_file, q_line) && std::getline(v_file, v_line)) {
         std::stringstream q_ss(q_line), v_ss(v_line);
         std::vector<double> q_vals, v_vals;
@@ -334,6 +340,21 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
             continue;
         }
         
+        all_q_vals.push_back(q_vals);
+        all_v_vals.push_back(v_vals);
+        ++line_count;
+    }
+    
+    if (all_q_vals.empty()) {
+        std::cerr << "No valid reference states loaded" << std::endl;
+        return false;
+    }
+    
+    // Second pass: compute EE velocities using proper differentiation
+    for (size_t t = 0; t < all_q_vals.size(); ++t) {
+        const auto& q_vals = all_q_vals[t];
+        const auto& v_vals = all_v_vals[t];
+        
         // Create state vector [q; v]
         Eigen::VectorXd x_ref(nx_);
         for (int i = 0; i < model_->nq; ++i) x_ref(i) = q_vals[i];
@@ -341,7 +362,7 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
         
         x_ref_full_.push_back(x_ref);
         
-        // zero control reference (will be updated if needed)
+        // Zero control reference
         u_ref_full_.push_back(Eigen::VectorXd::Zero(nu_));
         
         // Compute CoM and end-effector references for this state
@@ -353,11 +374,11 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
         // CoM reference
         Eigen::Vector3d com_ref;
         for (int i = 0; i < 3; ++i) {
-            com_ref(i) = temp_data->subtree_com[3 + i];  // Root body CoM is at index 1, skip first 3 elements
+            com_ref(i) = temp_data->subtree_com[3 + i];
         }
         com_ref_full_.push_back(com_ref);
         
-        // End-effector position and velocity references (using body positions)
+        // End-effector position and velocity references
         std::vector<Eigen::Vector3d> ee_pos_refs, ee_vel_refs;
         for (int ee_idx = 0; ee_idx < (int)ee_site_ids_.size(); ++ee_idx) {
             int body_id = ee_site_ids_[ee_idx];
@@ -369,7 +390,7 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
             }
             ee_pos_refs.push_back(ee_pos);
             
-            // Velocity reference: compute using body Jacobian
+            // Velocity reference: use Jacobian method (accurate and fast)
             Eigen::MatrixXd jac_pos(3, model_->nv), jac_rot(3, model_->nv);
             mj_jacBody(model_, temp_data, jac_pos.data(), jac_rot.data(), body_id);
             
@@ -380,8 +401,6 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
         ee_vel_ref_full_.push_back(ee_vel_refs);
         
         mj_deleteData(temp_data);
-        
-        ++line_count;
     }
     
     std::cout << "Loaded " << x_ref_full_.size() << " reference states" << std::endl;
@@ -439,6 +458,15 @@ Eigen::Vector3d RobotUtils::getEEReference(int t, int ee_idx) const {
     return ee_pos_ref_full_[t][ee_idx];
 }
 
+Eigen::Vector3d RobotUtils::getEEVelReference(int t, int ee_idx) const {
+    if (t >= (int)ee_vel_ref_full_.size() || ee_idx >= (int)ee_vel_ref_full_[t].size()) {
+        throw std::runtime_error("Invalid velocity reference index: t=" + std::to_string(t) + 
+                                ", ee_idx=" + std::to_string(ee_idx));
+    }
+    
+    return ee_vel_ref_full_[t][ee_idx];
+}
+
 void RobotUtils::resetToReference(int t) {
     if (t < (int)x_ref_full_.size()) {
         setState(x_ref_full_[t]);
@@ -484,8 +512,6 @@ void RobotUtils::initializeStandingPose() {
     
     // Forward kinematics to compute dependent quantities
     mj_forward(model_, data_);
-    
-    // std::cout << "Robot initialized to standing pose with improved stability settings" << std::endl;
 }
 
 // Private helper functions
@@ -503,9 +529,7 @@ void RobotUtils::buildJointNameMap() {
     // std::cout << "Built joint name mapping for " << joint_name_to_id_.size() << " joints" << std::endl;
 }
 
-// ============================================================================
 // CONSTRAINT COST FUNCTIONS
-// ============================================================================
 
 double RobotUtils::constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const {
     if (!model_) return 0.0;
@@ -673,55 +697,6 @@ void RobotUtils::constraintHessians(const Eigen::VectorXd& x, const Eigen::Vecto
 }
 
 
-// DEBUG
-void RobotUtils::diagnoseContactForces() const {
-    if (!model_ || !data_) return;
-    
-    std::cout << "\n=== CONTACT DIAGNOSTICS ===" << std::endl;
-    std::cout << "Active contacts: " << data_->ncon << std::endl;
-    
-    // Force MuJoCo to compute contact forces
-    mj_rnePostConstraint(model_, data_);
-    
-    double total_vertical_force = 0;
-    for (int i = 0; i < data_->ncon; ++i) {
-        // CORRECT: Access actual constraint forces
-        double normal_force = data_->efc_force ? data_->efc_force[i] : 0.0;
-        
-        // Extract contact normal (z-component for vertical force)  
-        double contact_normal_z = data_->contact[i].frame[2]; // Z component
-        double vertical_force_component = normal_force * contact_normal_z;
-        total_vertical_force += vertical_force_component;
-        
-        std::cout << "Contact " << i << ":" << std::endl;
-        std::cout << "  Penetration: " << data_->contact[i].dist << "m" << std::endl;
-        std::cout << "  Constraint force: " << normal_force << "N" << std::endl;
-        std::cout << "  Vertical component: " << vertical_force_component << "N" << std::endl;
-    }
-    
-    // Rest of diagnostics...
-    double robot_mass = 0;
-    for (int i = 0; i < model_->nbody; ++i) {
-        robot_mass += model_->body_mass[i];
-    }
-
-    double required_force = robot_mass * 9.81;
-    std::cout << "Total vertical force: " << total_vertical_force << "N" << std::endl;
-    std::cout << "Required force: " << required_force << "N" << std::endl;
-    std::cout << "Force ratio: " << (total_vertical_force / required_force) << std::endl;
-}
-/*
-void RobotUtils::debugContactSolver() {
-    std::cout << "Solver iterations used: " << data_->solver_iter << std::endl;
-    if (data_->solver_iter > 0) {
-        const mjSolverStat& stat = data_->solver[data_->solver_iter - 1];
-        std::cout << "Solver improvement: " << stat.improvement
-                  << " gradient: " << stat.gradient << std::endl;
-    }
-    std::cout << "Contact solver time (total): " << data_->timer[mjTIMER_CONSTRAINT].duration << std::endl;
-}
-*/
-
 // Utility Functions
 void RobotUtils::setGravity(double gx, double gy, double gz) {
     if (model_) {
@@ -809,7 +784,3 @@ void RobotUtils::computeGravComp(Eigen::VectorXd& ugrav) const {
     }
 }
 
-// REMOVED: CoM tracking functions
-
-// Get CoM Jacobian w.r.t. joint positions using MuJoCo's built-in function
-// REMOVED: CoM and EE tracking functions

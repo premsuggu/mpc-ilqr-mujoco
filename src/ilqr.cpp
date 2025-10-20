@@ -160,6 +160,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addEEPosCostDerivatives(t);
         }
         
+        // ADD EE VELOCITY TRACKING DERIVATIVES if weight > 0
+        if (robot_.getEEVelWeight() > 0.0) {
+            addEEVelCostDerivatives(t);
+        }
+        
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
         Eigen::VectorXd constraint_grad_u(robot_.nu());
@@ -192,6 +197,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     // ADD TERMINAL EE POSITION TRACKING DERIVATIVES if weight > 0
     if (robot_.getEEPosWeight() > 0.0) {
         addEEPosCostDerivatives(N_);
+    }
+    
+    // ADD TERMINAL EE VELOCITY TRACKING DERIVATIVES if weight > 0
+    if (robot_.getEEVelWeight() > 0.0) {
+        addEEVelCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -525,6 +535,29 @@ void iLQR::addEEPosCostDerivatives(int t) {
             
         } catch (const std::exception& e) {
             std::cerr << "Warning: EE cost error for idx " << ee_idx << ": " << e.what() << std::endl;
+        }
+    }
+}
+
+void iLQR::addEEVelCostDerivatives(int t) {
+    const double w_ee_vel = robot_.getEEVelWeight();
+    
+    // Add derivatives for each end-effector
+    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link
+        try {
+            std::string frame_name = robot_.getEEFrameName(ee_idx);
+            Eigen::Vector3d ee_vel_ref = robot_.getEEVelReference(t, ee_idx);
+            
+            // Use symbolic derivatives (fast and exact!)
+            Eigen::VectorXd grad_ee_vel = derivatives_.EEvelGrad(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
+            Eigen::MatrixXd hess_ee_vel = derivatives_.EEvelHess(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
+            
+            // Add to cost quadratics
+            lx_[t] += grad_ee_vel;
+            lxx_[t] += hess_ee_vel;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: EE velocity cost error for idx " << ee_idx << ": " << e.what() << std::endl;
         }
     }
 }

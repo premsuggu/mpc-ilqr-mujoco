@@ -79,6 +79,32 @@ public:
                             double weight = 1.0);
 
     /**
+     * @brief Compute end-effector velocity gradient (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param target_vel Target velocity [vx, vy, vz]
+     * @param frame_name End-effector frame name
+     * @param weight Cost weight
+     * @return Gradient vector w.r.t. full state [q, v]
+     */
+    Eigen::VectorXd EEvelGrad(const Eigen::VectorXd& x,
+                              const Eigen::Vector3d& target_vel,
+                              const std::string& frame_name,
+                              double weight = 1.0);
+
+    /**
+     * @brief Compute end-effector velocity hessian (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param target_vel Target velocity [vx, vy, vz]
+     * @param frame_name End-effector frame name
+     * @param weight Cost weight
+     * @return Hessian matrix w.r.t. full state [q, v]
+     */
+    Eigen::MatrixXd EEvelHess(const Eigen::VectorXd& x,
+                              const Eigen::Vector3d& target_vel,
+                              const std::string& frame_name,
+                              double weight = 1.0);
+
+    /**
      * @brief Pre-build functions for specific end-effector frame
      * @param frame_name Frame to prepare functions for
      */
@@ -102,8 +128,10 @@ private:
     
     // Pre-compiled function caches for different cost types
     std::map<std::string, ::casadi::Function> ee_pos_fns_;     // End-effector position functions
-    std::map<std::string, ::casadi::Function> ee_grad_fns_;    // EE gradient functions  
-    std::map<std::string, ::casadi::Function> ee_hess_fns_;    // EE Hessian functions
+    std::map<std::string, ::casadi::Function> ee_grad_fns_;    // EE position gradient functions  
+    std::map<std::string, ::casadi::Function> ee_hess_fns_;    // EE position Hessian functions
+    std::map<std::string, ::casadi::Function> ee_vel_grad_fns_; // EE velocity gradient functions
+    std::map<std::string, ::casadi::Function> ee_vel_hess_fns_; // EE velocity Hessian functions
     
     // CoM cost functions (single instance)
     ::casadi::Function com_grad_fn_;     // CoM gradient function
@@ -113,8 +141,11 @@ private:
     // Build all symbolic functions once in constructor
     void buildSymbolicFunctions();
     
-    // Helper to build end-effector functions for a specific frame
+    // Helper to build end-effector position functions for a specific frame
     void buildEEFunctions(const std::string& frame_name);
+    
+    // Helper to build end-effector velocity functions for a specific frame
+    void buildEEVelFunctions(const std::string& frame_name);
     
     // Helper to build CoM functions (once)
     void buildCoMFunctions();
