@@ -1,0 +1,121 @@
+FOR:
+Set gravity to: (0,0,-6)m/s²
+robot.setEEVelWeight(100.0);
+
+The cost vs steps is:
+Step 0/50 | Cost: 24.12 | (X,Y,Z): (0.00,0.00,1.04) m | Control range: [-4.39, 0.58]
+Step 1/50 | Cost: 15.53 | (X,Y,Z): (-0.00,-0.00,1.04) m | Control range: [-6.52, 0.44]
+Step 2/50 | Cost: 14.13 | (X,Y,Z): (-0.00,0.00,1.04) m | Control range: [-5.03, 0.58]
+Step 3/50 | Cost: 15.02 | (X,Y,Z): (-0.00,-0.00,1.04) m | Control range: [-7.03, 0.51]
+Step 4/50 | Cost: 15.57 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.57, 0.54]
+Step 5/50 | Cost: 15.66 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.03, 0.52]
+Step 6/50 | Cost: 15.65 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-5.74, 0.50]
+Step 7/50 | Cost: 16.71 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.30, 0.59]
+Step 8/50 | Cost: 16.23 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-5.94, 0.51]
+Step 9/50 | Cost: 17.22 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.30, 0.64]
+Step 10/50 | Cost: 17.88 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.92, 0.50]
+Step 11/50 | Cost: 16.95 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.01, 0.65]
+Step 12/50 | Cost: 17.32 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.80, 0.49]
+Step 13/50 | Cost: 17.35 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.97, 0.67]
+Step 14/50 | Cost: 18.65 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.64, 0.50]
+Step 15/50 | Cost: 18.14 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.35, 0.64]
+Step 16/50 | Cost: 18.35 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.20, 0.53]
+Step 17/50 | Cost: 18.41 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.42, 0.62]
+Step 18/50 | Cost: 18.61 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.41, 0.55]
+Step 19/50 | Cost: 18.76 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.49, 0.61]
+Step 20/50 | Cost: 19.05 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.54, 0.57]
+Step 21/50 | Cost: 19.17 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.63, 0.61]
+Step 22/50 | Cost: 19.29 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.60, 0.59]
+Step 23/50 | Cost: 19.40 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.68, 0.60]
+Step 24/50 | Cost: 19.51 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.67, 0.60]
+Step 25/50 | Cost: 19.61 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.72, 0.60]
+Step 26/50 | Cost: 19.70 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.72, 0.61]
+Step 27/50 | Cost: 19.79 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.76, 0.60]
+Step 28/50 | Cost: 19.88 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-7.77, 0.62]
+Step 29/50 | Cost: 19.96 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.80, 0.59]
+Step 30/50 | Cost: 20.03 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.81, 0.64]
+Step 31/50 | Cost: 20.10 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.83, 0.59]
+Step 32/50 | Cost: 20.16 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.84, 0.65]
+Step 33/50 | Cost: 20.23 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.86, 0.59]
+Step 34/50 | Cost: 20.28 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.87, 0.66]
+Step 35/50 | Cost: 20.33 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.89, 0.59]
+Step 36/50 | Cost: 20.38 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.89, 0.67]
+Step 37/50 | Cost: 20.43 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.91, 0.59]
+Step 38/50 | Cost: 20.47 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.92, 0.68]
+Step 39/50 | Cost: 20.52 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.93, 0.59]
+Step 40/50 | Cost: 20.55 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.93, 0.69]
+Step 41/50 | Cost: 20.59 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.94, 0.58]
+Step 42/50 | Cost: 20.62 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.95, 0.69]
+Step 43/50 | Cost: 20.65 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.96, 0.58]
+Step 44/50 | Cost: 20.68 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.96, 0.70]
+Step 45/50 | Cost: 20.71 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.97, 0.58]
+Step 46/50 | Cost: 20.73 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.97, 0.71]
+Step 47/50 | Cost: 20.76 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.98, 0.58]
+Step 48/50 | Cost: 20.78 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.98, 0.71]
+Step 49/50 | Cost: 20.81 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-7.99, 0.58]
+
+
+FOR:
+Set gravity to: (0,0,-6)m/s²
+robot.setEEVelWeight(0.0);
+
+The cost vs steps is:
+Step 0/50 | Cost: 24.16 | (X,Y,Z): (0.00,0.00,1.04) m | Control range: [-4.31, 0.58]
+Step 1/50 | Cost: 16.48 | (X,Y,Z): (-0.00,-0.00,1.04) m | Control range: [-7.47, 0.47]
+Step 2/50 | Cost: 14.42 | (X,Y,Z): (-0.00,0.00,1.04) m | Control range: [-5.35, 0.50]
+Step 3/50 | Cost: 14.79 | (X,Y,Z): (-0.00,0.00,1.04) m | Control range: [-6.42, 0.55]
+Step 4/50 | Cost: 15.10 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-5.86, 0.43]
+Step 5/50 | Cost: 15.43 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.31, 0.62]
+Step 6/50 | Cost: 39.06 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-6.16, 0.37]
+Step 7/50 | Cost: 26.16 | (X,Y,Z): (-0.01,-0.00,1.04) m | Control range: [-10.71, 0.76]
+Step 8/50 | Cost: 21.58 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-8.03, 0.30]
+Step 9/50 | Cost: 21.43 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-8.42, 0.78]
+Step 10/50 | Cost: 21.45 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-8.65, 0.29]
+Step 11/50 | Cost: 20.75 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-8.55, 0.05]
+Step 12/50 | Cost: 313058.21 | (X,Y,Z): (-0.01,0.00,1.04) m | Control range: [-8.22, 0.05]   -> abrupt change
+Step 13/50 | Cost: 236128.37 | (X,Y,Z): (-0.01,-0.00,0.87) m | Control range: [-22.86, 0.81]
+Step 14/50 | Cost: 566687.92 | (X,Y,Z): (-0.29,0.03,0.54) m | Control range: [-60.31, 23.84]
+Step 15/50 | Cost: 792302.42 | (X,Y,Z): (-0.73,-0.02,0.18) m | Control range: [-47.18, 7.09]
+Step 16/50 | Cost: 373077.90 | (X,Y,Z): (-0.78,-0.05,0.13) m | Control range: [-32.12, 16.46]
+Step 17/50 | Cost: 212358.78 | (X,Y,Z): (-0.79,-0.08,0.13) m | Control range: [-8.50, 11.40]
+fails ....
+
+
+FOR:
+Set gravity to: (0,0,-6)m/s²
+robot.setEEVelWeight(250.0);
+Step 0/50 | Cost: 24.16 | (X,Y,Z): (0.00,0.00,1.04) m | Control range: [-4.35, 0.58]
+Step 1/50 | Cost: 2696.48 | (X,Y,Z): (-0.00,-0.00,1.04) m | Control range: [-5.94, 0.39]
+Step 2/50 | Cost: 35649.39 | (X,Y,Z): (-0.02,0.00,1.04) m | Control range: [-5.90, 0.21]
+Step 3/50 | Cost: 386755.38 | (X,Y,Z): (-0.09,-0.00,1.03) m | Control range: [-11.08, 2.50]
+Step 4/50 | Cost: 428516.23 | (X,Y,Z): (-0.28,-0.00,0.70) m | Control range: [-6.28, 1.13]
+Step 5/50 | Cost: 1269788.13 | (X,Y,Z): (-0.77,-0.07,0.32) m | Control range: [-4.94, 0.24]
+Step 6/50 | Cost: 209131.07 | (X,Y,Z): (-0.81,-0.13,0.27) m | Control range: [-4.91, 0.96]
+Step 7/50 | Cost: 167756.08 | (X,Y,Z): (-0.81,-0.13,0.27) m | Control range: [-4.89, 1.05]
+fails....
+
+So setting a right weight makes it stand with g = -6 as well
+
+
+FOR
+Set gravity to: (0,0,-5.0)m/s²
+it mostly works for all of them if the weights are not that bad.
+
+FOR
+Set gravity to: (0,0,-7.0)m/s²
+for any cost weight.
+Step 0/50 | Cost: 38.19 | (X,Y,Z): (0.00,0.00,1.04) m | Control range: [-5.00, 0.58]
+Step 1/50 | Cost: 7935.94 | (X,Y,Z): (-0.00,-0.00,1.04) m | Control range: [-4.13, 0.04]
+Step 2/50 | Cost: 246485.70 | (X,Y,Z): (-0.02,-0.00,1.03) m | Control range: [-3.99, 2.88]
+Step 3/50 | Cost: 329875.74 | (X,Y,Z): (-0.15,0.01,0.94) m | Control range: [-3.60, 2.22]
+Step 4/50 | Cost: 433342.91 | (X,Y,Z): (-0.48,0.02,0.57) m | Control range: [-3.79, 1.90]
+
+
+FOR
+Set gravity to: (0,0,-9.0)m/s²
+
+Step 0/50 | Cost: 21327.20 | (X,Y,Z): (0.00,0.00,1.04) m | Control range: [-3.94, 7.04]
+Step 1/50 | Cost: 89766.69 | (X,Y,Z): (0.01,0.01,1.01) m | Control range: [-2.55, 2.57]
+Step 2/50 | Cost: 768604.58 | (X,Y,Z): (-0.15,0.03,0.44) m | Control range: [-13.82, 1.83]
+Step 3/50 | Cost: 845829.46 | (X,Y,Z): (-0.21,-0.15,0.20) m | Control range: [-30.74, 5.59]
+Step 4/50 | Cost: 352278.04 | (X,Y,Z): (-0.13,-0.09,0.11) m | Control range: [-44.53, 59.68]

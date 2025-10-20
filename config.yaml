@@ -18,7 +18,7 @@ mpc:
   dt: 0.02                 # MPC timestep (50 Hz)
   physics_dt: 0.02         # Physics engine timestep
   gravity: [0.0, 0.0, -6.0]  # World gravity [x, y, z]
-  sim_steps: 15            # Total simulation steps
+  sim_steps: 50            # Total simulation steps
   contact_impratio: 100.0  # Contact stiffness for stability
 
   cost_weights:
@@ -56,5 +56,5 @@ paths:
 
 logging:
   verbose: true             # Print detailed progress
-  save_trajectories: false   # Save optimal trajectories to file
+  save_trajectories: true   # Save optimal trajectories to file
   results_path: "results"   # Directory for trajectory logging
