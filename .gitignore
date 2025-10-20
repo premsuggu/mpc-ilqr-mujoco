@@ -113,5 +113,8 @@ iLQR.tex
 # Documents files
 docs/
 
-# Backup files
+# Backup & Extra files
 *backup*
+analysis/
+DUMP/
+trajectory_smoothing/

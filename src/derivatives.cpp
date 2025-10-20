@@ -108,7 +108,60 @@ void EEDerivatives::buildEEFunctions(const std::string& frame_name) {
         {x_sym_, target_sym, weight_sym}, {hess}
     );
     
-    std::cout << "Built cached functions for frame: " << frame_name << std::endl;
+    std::cout << "Built cached EE position functions for frame: " << frame_name << std::endl;
+}
+
+void EEDerivatives::buildEEVelFunctions(const std::string& frame_name) {
+    // Get frame ID
+    pinocchio::FrameIndex frame_id = getFrameId(frame_name);
+    
+    // Create symbolic input parameters
+    ::casadi::SX target_vel_sym = ::casadi::SX::sym("target_vel", 3);
+    ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
+    
+    // Extract q and v from full state x = [q, v]
+    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
+    ConfigVector q_ad(model_.nq), v_ad(model_.nv);
+    for (int i = 0; i < model_.nq; i++) {
+        q_ad[i] = x_sym_(i);
+    }
+    for (int i = 0; i < model_.nv; i++) {
+        v_ad[i] = x_sym_(model_.nq + i);
+    }
+    
+    // Create a LOCAL ad_data object to avoid corrupting the shared one
+    pinocchio::DataTpl<ADScalar> local_ad_data(ad_model_);
+    
+    // Forward kinematics with velocities (using local data)
+    pinocchio::forwardKinematics(ad_model_, local_ad_data, q_ad, v_ad);
+    pinocchio::updateFramePlacements(ad_model_, local_ad_data);
+    
+    // Get end-effector velocity (linear part only, in world frame)
+    auto frame_vel = pinocchio::getFrameVelocity(ad_model_, local_ad_data, frame_id, pinocchio::LOCAL_WORLD_ALIGNED);
+    ::casadi::SX ee_vel = ::casadi::SX::vertcat({
+        frame_vel.linear()[0],
+        frame_vel.linear()[1],
+        frame_vel.linear()[2]
+    });
+    
+    // Velocity error and cost
+    ::casadi::SX vel_error = ee_vel - target_vel_sym;
+    ::casadi::SX vel_cost = weight_sym * ::casadi::SX::dot(vel_error, vel_error);
+    
+    // Build cached functions
+    ::casadi::SX vel_grad = ::casadi::SX::gradient(vel_cost, x_sym_);
+    ee_vel_grad_fns_[frame_name] = ::casadi::Function(
+        "ee_vel_grad_" + frame_name,
+        {x_sym_, target_vel_sym, weight_sym}, {vel_grad}
+    );
+    
+    ::casadi::SX vel_hess = ::casadi::SX::jacobian(vel_grad, x_sym_);
+    ee_vel_hess_fns_[frame_name] = ::casadi::Function(
+        "ee_vel_hess_" + frame_name,
+        {x_sym_, target_vel_sym, weight_sym}, {vel_hess}
+    );
+    
+    std::cout << "Built cached EE velocity functions for frame: " << frame_name << std::endl;
 }
 
 void EEDerivatives::buildCoMFunctions() {
@@ -160,10 +213,12 @@ void EEDerivatives::buildCoMFunctions() {
 }
 
 void EEDerivatives::prepareFrame(const std::string& frame_name) {
-    // Check if functions already exist
+    // Build position functions if not exist
     if (ee_grad_fns_.find(frame_name) == ee_grad_fns_.end()) {
         buildEEFunctions(frame_name);
     }
+    // NOTE: Velocity functions are built on-demand in EEvelGrad/EEvelHess
+    // to avoid any potential interference with position functions
 }
 
 Eigen::VectorXd EEDerivatives::EEposGrad(const Eigen::VectorXd& x, 
@@ -279,6 +334,72 @@ Eigen::MatrixXd EEDerivatives::CoMHess(const Eigen::VectorXd& x,
     
     // Evaluate cached function (fast!)
     ::casadi::DM hess_dm = com_hess_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
+    
+    // Convert back to Eigen (full state size)
+    int nx = model_.nq + model_.nv;
+    Eigen::MatrixXd hessian(nx, nx);
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < nx; j++) {
+            hessian(i, j) = double(hess_dm(i, j));
+        }
+    }
+    
+    return hessian;
+}
+
+Eigen::VectorXd EEDerivatives::EEvelGrad(const Eigen::VectorXd& x,
+                                         const Eigen::Vector3d& target_vel,
+                                         const std::string& frame_name,
+                                         double weight) {
+    
+    // Build velocity functions on-demand
+    if (ee_vel_grad_fns_.find(frame_name) == ee_vel_grad_fns_.end()) {
+        buildEEVelFunctions(frame_name);
+    }
+    
+    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    
+    // Convert inputs to CasADi format
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM target_dm = ::casadi::DM({target_vel[0], target_vel[1], target_vel[2]});
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    // Evaluate cached function (fast!)
+    ::casadi::DM grad_dm = ee_vel_grad_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
+    
+    // Convert back to Eigen (full state size)
+    int nx = model_.nq + model_.nv;
+    Eigen::VectorXd gradient(nx);
+    for (int i = 0; i < nx; i++) {
+        gradient(i) = double(grad_dm(i));
+    }
+    
+    return gradient;
+}
+
+Eigen::MatrixXd EEDerivatives::EEvelHess(const Eigen::VectorXd& x,
+                                         const Eigen::Vector3d& target_vel,
+                                         const std::string& frame_name,
+                                         double weight) {
+    
+    // Build velocity functions on-demand
+    if (ee_vel_hess_fns_.find(frame_name) == ee_vel_hess_fns_.end()) {
+        buildEEVelFunctions(frame_name);
+    }
+    
+    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    
+    // Convert inputs to CasADi format
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM target_dm = ::casadi::DM({target_vel[0], target_vel[1], target_vel[2]});
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    // Evaluate cached function (fast!)
+    ::casadi::DM hess_dm = ee_vel_hess_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;
