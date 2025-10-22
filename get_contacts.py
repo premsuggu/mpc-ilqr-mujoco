@@ -42,9 +42,9 @@ def convert_pinocchio_to_mujoco(pinocchio_state):
 
 def main():
     # Parse command line arguments
-    csv_path = "/home/prem/mujoco_mpc/data/q_ref2_pin.csv"
-    output_path = "/home/prem/mujoco_mpc/data/contact_walking.csv"
-    pinocchio_convention = True  # By default, assume MuJoCo convention
+    csv_path = "/home/prem/mujoco_mpc/data/q_standing.csv"
+    output_path = "/home/prem/mujoco_mpc/data/contact_standing.csv"
+    pinocchio_convention = False  # By default, assume MuJoCo convention
     
     # Simple argument parsing
     if len(sys.argv) > 1:

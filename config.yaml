@@ -8,6 +8,7 @@ robot:
   ee_feet: 
     right_feet_ee: "right_ankle_link"
     left_feet_ee: "left_ankle_link"
+  contact_schedule: "data/contact_schedule.csv"
 
 reference_trajectory:
   q_ref: "data/q_standing.csv"
@@ -45,6 +46,7 @@ mpc:
     # Task-specific weights
     W_com: 500.0              # Center of Mass tracking weight
     W_foot: 500.0             # End-effector position tracking weight
+    W_foot_vel: 100.0         # End-effector velocity tracking weight
 
   constraints:
     joint_limit_weight: 5000.0    # Joint limit soft constraint penalty

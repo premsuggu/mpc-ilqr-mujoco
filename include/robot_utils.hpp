@@ -96,9 +96,6 @@ public:
     void setGravity(double gx = 0.0, double gy = 0.0, double gz = 0.0);
     void scaleRobotMass(double scale_factor);
     
-    // DEBUG
-    void diagnoseContactForces() const;
-    void debugContactSolver();
 private:
     // MuJoCo model and data
     mjModel* model_;

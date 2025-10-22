@@ -42,7 +42,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.Qf_vel_z = costs_node["Qf_vel_z"].as<double>();
         config.mpc.costs.W_com = costs_node["W_com"].as<double>();
         config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
-
+        config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
         // Load constraints
         auto constraints_node = mpc_node["constraints"];
         config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();
@@ -61,9 +61,7 @@ void Config::buildCostMatrices(int nx, int nu, int nq) {
     R = Eigen::MatrixXd::Identity(nu, nu);
     Qf = Eigen::MatrixXd::Identity(nx, nx);
     
-    // ===================================================================
     // Build Q matrix (state deviation weights)
-    // ===================================================================
     
     // Position tracking weights (CoM position in world frame)
     Q(0, 0) = mpc.costs.Q_position_xy;   // X position
@@ -96,14 +94,10 @@ void Config::buildCostMatrices(int nx, int nu, int nq) {
         Q(i, i) = mpc.costs.Q_joint_vel;
     }
     
-    // ===================================================================
     // Build R matrix (control effort regularization)
-    // ===================================================================
     R *= mpc.costs.R_control;
     
-    // ===================================================================
     // Build Qf matrix (terminal cost weights)
-    // ===================================================================
     
     // Start with Q scaled by multiplier
     Qf = Q * mpc.costs.Qf_multiplier;
