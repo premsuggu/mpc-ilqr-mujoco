@@ -33,6 +33,7 @@ struct Config {
     std::string urdf_path;
     std::string q_ref_path;
     std::string v_ref_path;
+    std::string contact_schedule_path;
     std::string results_path;
     bool verbose;
     bool save_trajectories;

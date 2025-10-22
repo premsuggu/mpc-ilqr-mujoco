@@ -81,6 +81,10 @@ public:
                             std::vector<Eigen::VectorXd>& x_ref_window,
                             std::vector<Eigen::VectorXd>& u_ref_window,
                             std::vector<Eigen::Vector3d>& com_ref_window) const;
+    
+    // Contact schedule
+    bool loadContactSchedule(const std::string& contact_path);
+    bool isStance(int ee_idx, int t) const;
 
     // Utility functions
     int jointId(const std::string& name) const;
@@ -121,6 +125,9 @@ private:
     std::vector<Eigen::Vector3d> com_ref_full_;
     std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;  // [time][ee_idx] = position
     std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;  // [time][ee_idx] = velocity
+    
+    // Contact schedule: contact_schedule_[t][ee_idx] = 1 (stance) or 0 (swing)
+    std::vector<std::vector<int>> contact_schedule_;
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;

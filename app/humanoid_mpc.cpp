@@ -109,6 +109,9 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     if (!robot.loadReferences(config.q_ref_path, config.v_ref_path)) {
         throw std::runtime_error("Failed to load reference trajectories.");
     }
+    if (!robot.loadContactSchedule(config.contact_schedule_path)) {
+        std::cerr << "Warning: Failed to load contact schedule, continuing without it." << std::endl;
+    }
 }
 
  

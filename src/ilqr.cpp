@@ -520,12 +520,15 @@ void iLQR::addEEPosCostDerivatives(int t) {
     const double w_ee = robot_.getEEPosWeight();
     
     // Add derivatives for each end-effector
-    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link
+    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link for H1
+        // Skip position cost during stance phase (foot should stay planted)
+        if (robot_.isStance(ee_idx, t)) continue;
+        
         try {
             std::string frame_name = robot_.getEEFrameName(ee_idx);
             Eigen::Vector3d ee_ref = robot_.getEEReference(t, ee_idx);
             
-            // Use symbolic derivatives (fast and exact!)
+            // Use symbolic derivatives
             Eigen::VectorXd grad_ee = derivatives_.EEposGrad(xbar_[t], ee_ref, frame_name, w_ee);
             Eigen::MatrixXd hess_ee = derivatives_.EEposHess(xbar_[t], ee_ref, frame_name, w_ee);
             
@@ -544,9 +547,13 @@ void iLQR::addEEVelCostDerivatives(int t) {
     
     // Add derivatives for each end-effector
     for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link
+        // Skip velocity cost during swing phase (foot needs to move)
+        if (!robot_.isStance(ee_idx, t)) continue;
+        
         try {
             std::string frame_name = robot_.getEEFrameName(ee_idx);
-            Eigen::Vector3d ee_vel_ref = robot_.getEEVelReference(t, ee_idx);
+            // During stance, penalize velocity (target zero velocity to keep foot planted)
+            Eigen::Vector3d ee_vel_ref = Eigen::Vector3d::Zero();
             
             // Use symbolic derivatives (fast and exact!)
             Eigen::VectorXd grad_ee_vel = derivatives_.EEvelGrad(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
