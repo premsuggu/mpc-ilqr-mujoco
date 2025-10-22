@@ -13,7 +13,6 @@ Makefile
 results/*.csv
 results/*.png
 results/*.jpg
-results/*.gif
 
 # Visual Studio / MSVC files
 *.vcxproj
