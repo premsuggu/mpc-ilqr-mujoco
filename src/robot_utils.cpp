@@ -7,7 +7,7 @@
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
       nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_ee_pos_(0.0), w_ee_vel_(0.0), 
-      w_joint_limits_(500.0), w_control_limits_(1000.0) {
+      w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0) {
 }
 
 RobotUtils::~RobotUtils() {
@@ -428,6 +428,67 @@ void RobotUtils::getReferenceWindow(int t0, int N,
             u_ref_window.push_back(u_ref_full_[u_ref_idx]);
         }
     }
+}
+
+bool RobotUtils::loadContactSchedule(const std::string& contact_path) {
+    contact_schedule_.clear();
+    
+    std::ifstream file(contact_path);
+    if (!file.is_open()) {
+        std::cerr << "Warning: Failed to open contact schedule file: " << contact_path << std::endl;
+        return false;
+    }
+    
+    std::string line;
+    // Skip header
+    std::getline(file, line);
+    
+    // Read each timestep
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string token;
+        std::vector<int> contacts;
+        
+        // Parse comma-separated values
+        while (std::getline(ss, token, ',')) {
+            try {
+                contacts.push_back(std::stoi(token));
+            } catch (...) {
+                std::cerr << "Warning: Failed to parse contact value: " << token << std::endl;
+                continue;
+            }
+        }
+        
+        // Validate number of end-effectors matches
+        if (!contacts.empty() && contacts.size() != ee_site_ids_.size()) {
+            std::cerr << "Warning: Contact schedule has " << contacts.size() 
+                      << " end-effectors but model has " << ee_site_ids_.size() << std::endl;
+        }
+        
+        if (!contacts.empty()) {
+            contact_schedule_.push_back(contacts);
+        }
+    }
+    
+    file.close();
+    
+    std::cout << "Loaded contact schedule: " << contact_schedule_.size() 
+              << " timesteps, " << (contact_schedule_.empty() ? 0 : contact_schedule_[0].size()) 
+              << " end-effectors" << std::endl;
+    
+    return !contact_schedule_.empty();
+}
+
+bool RobotUtils::isStance(int ee_idx, int t) const {
+    // Bounds checking
+    if (t < 0 || t >= (int)contact_schedule_.size()) {
+        return true;  // Default to stance if no schedule available
+    }
+    if (ee_idx < 0 || ee_idx >= (int)contact_schedule_[t].size()) {
+        return true;  // Default to stance for invalid indices
+    }
+    
+    return contact_schedule_[t][ee_idx] == 1;
 }
 
 int RobotUtils::jointId(const std::string& name) const {

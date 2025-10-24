@@ -92,6 +92,7 @@ private:
     void addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref);
     void addEEPosCostDerivatives(int t);
     void addEEVelCostDerivatives(int t);
+    void addUprightCostDerivatives(int t);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

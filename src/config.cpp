@@ -11,6 +11,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.urdf_path = yaml_node["robot"]["urdf_path"].as<std::string>();
         config.q_ref_path = yaml_node["reference_trajectory"]["q_ref"].as<std::string>();
         config.v_ref_path = yaml_node["reference_trajectory"]["v_ref"].as<std::string>();
+        config.contact_schedule_path = yaml_node["reference_trajectory"]["contact_schedule"].as<std::string>();
         config.results_path = yaml_node["logging"]["results_path"].as<std::string>();
         config.verbose = yaml_node["logging"]["verbose"].as<bool>();
         config.save_trajectories = yaml_node["logging"]["save_trajectories"].as<bool>();
@@ -43,6 +44,8 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.W_com = costs_node["W_com"].as<double>();
         config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
+        config.mpc.costs.W_upright = costs_node["W_upright"].as<double>();  // Load upright weight
+        
         // Load constraints
         auto constraints_node = mpc_node["constraints"];
         config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();

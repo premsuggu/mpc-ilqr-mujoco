@@ -103,6 +103,13 @@ public:
                               const Eigen::Vector3d& target_vel,
                               const std::string& frame_name,
                               double weight = 1.0);
+    
+
+    Eigen::VectorXd UprightGrad(const Eigen::VectorXd& x, 
+                                double w_upright);
+
+    Eigen::MatrixXd UprightHess(const Eigen::VectorXd& x, 
+                                double w_upright);
 
     /**
      * @brief Pre-build functions for specific end-effector frame
@@ -137,6 +144,14 @@ private:
     ::casadi::Function com_grad_fn_;     // CoM gradient function
     ::casadi::Function com_hess_fn_;     // CoM Hessian function
     bool com_functions_built_;
+
+    // Upright cost funtion
+    ::casadi::Function upright_grad_fn_;
+    ::casadi::Function upright_hess_fn_;
+    bool upright_functions_built_;
+    
+    // State dimensions (cached for efficiency)
+    int nx_;  // Full state size (nq + nv)
     
     // Build all symbolic functions once in constructor
     void buildSymbolicFunctions();
@@ -150,6 +165,8 @@ private:
     // Helper to build CoM functions (once)
     void buildCoMFunctions();
 
+    // Helper to build upright cost functions
+    void buildUprightFunctions();
 public:
     pinocchio::FrameIndex getFrameId(const std::string& frame_name);
 };

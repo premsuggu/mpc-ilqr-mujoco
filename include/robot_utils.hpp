@@ -63,7 +63,8 @@ public:
     double getEEPosWeight() const { return w_ee_pos_; }
     void setEEVelWeight(double w_ee_vel) { w_ee_vel_ = w_ee_vel; }
     double getEEVelWeight() const { return w_ee_vel_; }
-    // Cost helpers - REMOVED CoM and EE tracking
+    double getUprightWeight() const { return w_upright_; }
+    void setUprightWeight(double w_upright) { w_upright_ = w_upright;}
     
     // Constraint cost functions
     double constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -81,6 +82,10 @@ public:
                             std::vector<Eigen::VectorXd>& x_ref_window,
                             std::vector<Eigen::VectorXd>& u_ref_window,
                             std::vector<Eigen::Vector3d>& com_ref_window) const;
+    
+    // Contact schedule
+    bool loadContactSchedule(const std::string& contact_path);
+    bool isStance(int ee_idx, int t) const;
 
     // Utility functions
     int jointId(const std::string& name) const;
@@ -110,6 +115,7 @@ private:
     Eigen::MatrixXd Q_, R_, Qf_;
     double w_com_;  // CoM tracking weight
     double w_ee_pos_, w_ee_vel_;
+    double w_upright_; // Upright Posture Penalty
     
     // Constraint weights
     double w_joint_limits_;
@@ -121,6 +127,9 @@ private:
     std::vector<Eigen::Vector3d> com_ref_full_;
     std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;  // [time][ee_idx] = position
     std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;  // [time][ee_idx] = velocity
+    
+    // Contact schedule: contact_schedule_[t][ee_idx] = 1 (stance) or 0 (swing)
+    std::vector<std::vector<int>> contact_schedule_;
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;
