@@ -63,7 +63,8 @@ public:
     double getEEPosWeight() const { return w_ee_pos_; }
     void setEEVelWeight(double w_ee_vel) { w_ee_vel_ = w_ee_vel; }
     double getEEVelWeight() const { return w_ee_vel_; }
-    // Cost helpers - REMOVED CoM and EE tracking
+    double getUprightWeight() const { return w_upright_; }
+    void setUprightWeight(double w_upright) { w_upright_ = w_upright;}
     
     // Constraint cost functions
     double constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -114,6 +115,7 @@ private:
     Eigen::MatrixXd Q_, R_, Qf_;
     double w_com_;  // CoM tracking weight
     double w_ee_pos_, w_ee_vel_;
+    double w_upright_; // Upright Posture Penalty
     
     // Constraint weights
     double w_joint_limits_;

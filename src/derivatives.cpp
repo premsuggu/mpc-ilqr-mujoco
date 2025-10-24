@@ -41,6 +41,7 @@ EEDerivatives::EEDerivatives(const std::string& urdf_path, bool floating_base) {
 void EEDerivatives::buildSymbolicFunctions() {
     // Create symbolic full state vector [q, v]
     int nx = model_.nq + model_.nv;  // Full state size
+    nx_ = nx;  // Cache for later use
     x_sym_ = ::casadi::SX::sym("x", nx);
     
     // Create CasADi-compatible model for symbolic computations
@@ -49,6 +50,7 @@ void EEDerivatives::buildSymbolicFunctions() {
     
     // Initialize CoM functions flag
     com_functions_built_ = false;
+    upright_functions_built_ = false;
     
     std::cout << "Built symbolic computation framework for state size " << nx 
               << " (nq=" << model_.nq << ", nv=" << model_.nv << ")" << std::endl;
@@ -210,6 +212,52 @@ void EEDerivatives::buildCoMFunctions() {
     
     com_functions_built_ = true;
     std::cout << "Built cached CoM functions" << std::endl;
+}
+
+// For keeping the robot upright
+void EEDerivatives::buildUprightFunctions() {
+    // Extract quaternion from state: x = [q, v] where q = [pos(3), quat(4), joints...]
+    // Quaternion indices in q: [3, 4, 5, 6] for [qw, qx, qy, qz]
+    casadi::SX qw = x_sym_(3);
+    casadi::SX qx = x_sym_(4);
+    casadi::SX qy = x_sym_(5);
+    casadi::SX qz = x_sym_(6);
+    
+    // Compute torso z-axis in world frame (3rd column of rotation matrix)
+    casadi::SX z_torso_x = 2*(qx*qz + qw*qy);
+    casadi::SX z_torso_y = 2*(qy*qz - qw*qx);
+    casadi::SX z_torso_z = 1 - 2*(qx*qx + qy*qy);
+    
+    // World z-axis target
+    casadi::SX z_world_x = 0.0;
+    casadi::SX z_world_y = 0.0;
+    casadi::SX z_world_z = 1.0;
+    
+    // Residual: r = z_torso - z_world
+    casadi::SX rx = z_torso_x - z_world_x;
+    casadi::SX ry = z_torso_y - z_world_y;
+    casadi::SX rz = z_torso_z - z_world_z;
+    
+    // Weight parameter
+    casadi::SX w_upright = casadi::SX::sym("w_upright");
+    
+    // Cost: L = 0.5 * w * ||r||²
+    casadi::SX cost = 0.5 * w_upright * (rx*rx + ry*ry + rz*rz);
+    
+    // Compute gradient: ∂L/∂x (automatic differentiation!)
+    casadi::SX grad = casadi::SX::gradient(cost, x_sym_);
+    
+    // Compute Hessian: ∂²L/∂x² (automatic differentiation!)
+    casadi::SX hess = casadi::SX::hessian(cost, x_sym_);
+    
+    // Create CasADi functions
+    upright_grad_fn_ = casadi::Function("upright_grad", 
+                                        {x_sym_, w_upright}, 
+                                        {grad});
+    
+    upright_hess_fn_ = casadi::Function("upright_hess", 
+                                        {x_sym_, w_upright}, 
+                                        {hess});
 }
 
 void EEDerivatives::prepareFrame(const std::string& frame_name) {
@@ -412,6 +460,53 @@ Eigen::MatrixXd EEDerivatives::EEvelHess(const Eigen::VectorXd& x,
     
     return hessian;
 }
+
+// Upright posture derivatives
+Eigen::VectorXd EEDerivatives::UprightGrad(const Eigen::VectorXd& x, double w_upright) {
+    // Build functions if not yet built
+    if (!upright_functions_built_) {
+        buildUprightFunctions();
+        upright_functions_built_ = true;
+    }
+    
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM w_dm = ::casadi::DM(w_upright);
+    
+    // Evaluate function using proper CasADi vector syntax
+    ::casadi::DM grad_dm = upright_grad_fn_(::casadi::DMVector{x_dm, w_dm})[0];
+    
+    // Convert back to Eigen
+    std::vector<double> grad_vec = grad_dm.get_elements();
+    return Eigen::Map<Eigen::VectorXd>(grad_vec.data(), grad_vec.size());
+}
+
+Eigen::MatrixXd EEDerivatives::UprightHess(const Eigen::VectorXd& x, double w_upright) {
+    // Build functions if not yet built
+    if (!upright_functions_built_) {
+        buildUprightFunctions();
+        upright_functions_built_ = true;
+    }
+    
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM w_dm = ::casadi::DM(w_upright);
+    
+    // Evaluate function using proper CasADi vector syntax
+    ::casadi::DM hess_dm = upright_hess_fn_(::casadi::DMVector{x_dm, w_dm})[0];
+    
+    // Convert back to Eigen
+    std::vector<double> hess_vec = hess_dm.get_elements();
+    Eigen::MatrixXd hess = Eigen::Map<Eigen::MatrixXd>(hess_vec.data(), nx_, nx_);
+    
+    // Ensure symmetry (CasADi Hessian should already be symmetric)
+    return 0.5 * (hess + hess.transpose());
+}
+
 
 pinocchio::FrameIndex EEDerivatives::getFrameId(const std::string& frame_name) {
     if (!model_.existFrame(frame_name)) {

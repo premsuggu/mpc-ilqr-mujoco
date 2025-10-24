@@ -165,6 +165,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addEEVelCostDerivatives(t);
         }
         
+        // ADD UPRIGHT COST DERIVATIVES if weight > 0
+        if (robot_.getUprightWeight() > 0.0) {
+            addUprightCostDerivatives(t);
+        }
+        
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
         Eigen::VectorXd constraint_grad_u(robot_.nu());
@@ -202,6 +207,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     // ADD TERMINAL EE VELOCITY TRACKING DERIVATIVES if weight > 0
     if (robot_.getEEVelWeight() > 0.0) {
         addEEVelCostDerivatives(N_);
+    }
+    
+    // ADD TERMINAL UPRIGHT COST DERIVATIVES if weight > 0
+    if (robot_.getUprightWeight() > 0.0) {
+        addUprightCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -348,11 +358,52 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         
         total_cost += 0.5 * x_err.transpose() * robot_.Q() * x_err;
         total_cost += 0.5 * u_err.transpose() * robot_.R() * u_err;
+        
+        // Add upright cost contribution
+        if (robot_.getUprightWeight() > 0.0) {
+            // Extract quaternion from state (MuJoCo format: [x,y,z,qw,qx,qy,qz,...])
+            double qw = x_traj[t](3);
+            double qx = x_traj[t](4);
+            double qy = x_traj[t](5);
+            double qz = x_traj[t](6);
+            
+            // Compute torso z-axis in world frame
+            Eigen::Vector3d z_torso(
+                2.0 * (qx*qz + qw*qy),
+                2.0 * (qy*qz - qw*qx),
+                1.0 - 2.0 * (qx*qx + qy*qy)
+            );
+            
+            // Target is world z-axis
+            Eigen::Vector3d z_world(0.0, 0.0, 1.0);
+            
+            // Residual and cost
+            Eigen::Vector3d r_upright = z_torso - z_world;
+            total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
+        }
     }
     
     // Terminal cost
     Eigen::VectorXd x_err_N = x_traj[N_] - x_ref[N_];
     total_cost += 0.5 * x_err_N.transpose() * robot_.Qf() * x_err_N;
+    
+    // Add terminal upright cost
+    if (robot_.getUprightWeight() > 0.0) {
+        double qw = x_traj[N_](3);
+        double qx = x_traj[N_](4);
+        double qy = x_traj[N_](5);
+        double qz = x_traj[N_](6);
+        
+        Eigen::Vector3d z_torso(
+            2.0 * (qx*qz + qw*qy),
+            2.0 * (qy*qz - qw*qx),
+            1.0 - 2.0 * (qx*qx + qy*qy)
+        );
+        
+        Eigen::Vector3d z_world(0.0, 0.0, 1.0);
+        Eigen::Vector3d r_upright = z_torso - z_world;
+        total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
+    }
 
     for(int t = 0; t < N_; ++t){
         total_cost += robot_.constraintCost(x_traj[t], u_traj[t]);
@@ -567,4 +618,17 @@ void iLQR::addEEVelCostDerivatives(int t) {
             std::cerr << "Warning: EE velocity cost error for idx " << ee_idx << ": " << e.what() << std::endl;
         }
     }
+}
+
+void iLQR::addUprightCostDerivatives(int t) {
+    const double w_upright = robot_.getUprightWeight();
+    if (w_upright <= 0.0) return;
+    
+    // Compute upright cost derivatives
+    Eigen::VectorXd grad_upright = derivatives_.UprightGrad(xbar_[t], w_upright);
+    Eigen::MatrixXd hess_upright = derivatives_.UprightHess(xbar_[t], w_upright);
+    
+    // Add to cost quadratics
+    lx_[t] += grad_upright;
+    lxx_[t] += hess_upright;
 }

@@ -48,6 +48,7 @@ mpc:
     W_com: 500.0              # Center of Mass tracking weight
     W_foot: 500.0             # End-effector position tracking weight
     W_foot_vel: 100.0         # End-effector velocity tracking weight
+    W_upright: 200.0              # Upright posture penalty (0 = disabled)
 
   constraints:
     joint_limit_weight: 5000.0    # Joint limit soft constraint penalty
