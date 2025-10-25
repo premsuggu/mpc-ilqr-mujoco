@@ -42,9 +42,10 @@ def convert_pinocchio_to_mujoco(pinocchio_state):
 
 def main():
     # Parse command line arguments
-    csv_path = "/home/prem/mujoco_mpc/data/q_standing.csv"
-    output_path = "/home/prem/mujoco_mpc/data/contact_standing.csv"
-    pinocchio_convention = False  # By default, assume MuJoCo convention
+    csv_path = "data/q_ref2_pin.csv"
+    output_path = "data/contact_walking.csv"
+    pinocchio_convention = True
+    save_mj_trajecotry = True
     
     # Simple argument parsing
     if len(sys.argv) > 1:
@@ -68,7 +69,7 @@ def main():
                 print("  Convention: MuJoCo (use --pinocchio-convention if input is in Pinocchio format)")
                 return
     
-    model_path = "/home/prem/mujoco_mpc/robots/h1_description/mjcf/scene.xml"
+    model_path = "./robots/h1_description/mjcf/scene.xml"
     
     # Load model and data
     model = mujoco.MjModel.from_xml_path(model_path)
@@ -152,6 +153,8 @@ def main():
     # Save contact schedule to CSV
     contact_df = pd.DataFrame(contact_schedule, columns=['left_foot', 'right_foot'])
     contact_df.to_csv(output_path, index=False)
+    if save_mj_trajecotry and pinocchio_convention:
+        q_ref.to_csv("data/q_ref_mj.csv", index = False, header = False)
     
     print(f"\n✓ Contact schedule saved to {output_path}")
     print(f"  Shape: {contact_df.shape}")
