@@ -9,7 +9,7 @@ cmake_install.cmake
 !CMakeLists.txt
 Makefile
 
-# Generated results (keep structure, ignore contents)
+# Generated results
 results/*.csv
 results/*.png
 results/*.jpg
@@ -106,7 +106,6 @@ coverage.xml
 
 # Test files
 sim.py
-iLQR.tex
 *test*
 
 # Documents files
@@ -115,5 +114,3 @@ docs/
 # Backup & Extra files
 *backup*
 analysis/
-DUMP/
-trajectory_smoothing/
