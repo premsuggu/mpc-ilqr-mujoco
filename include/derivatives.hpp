@@ -112,6 +112,28 @@ public:
                                 double w_upright);
 
     /**
+     * @brief Compute balance cost gradient using capture point (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param p_support Support center position [x, y]
+     * @param w_balance Balance cost weight
+     * @return Gradient vector w.r.t. full state [q, v]
+     */
+    Eigen::VectorXd BalanceGrad(const Eigen::VectorXd& x,
+                                const Eigen::Vector2d& p_support,
+                                double w_balance);
+
+    /**
+     * @brief Compute balance cost hessian using capture point (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param p_support Support center position [x, y]
+     * @param w_balance Balance cost weight
+     * @return Hessian matrix w.r.t. full state [q, v]
+     */
+    Eigen::MatrixXd BalanceHess(const Eigen::VectorXd& x,
+                                const Eigen::Vector2d& p_support,
+                                double w_balance);
+
+    /**
      * @brief Pre-build functions for specific end-effector frame
      * @param frame_name Frame to prepare functions for
      */
@@ -150,6 +172,11 @@ private:
     ::casadi::Function upright_hess_fn_;
     bool upright_functions_built_;
     
+    // Balance cost functions (capture point)
+    ::casadi::Function balance_grad_fn_;
+    ::casadi::Function balance_hess_fn_;
+    bool balance_functions_built_;
+    
     // State dimensions (cached for efficiency)
     int nx_;  // Full state size (nq + nv)
     
@@ -167,6 +194,9 @@ private:
 
     // Helper to build upright cost functions
     void buildUprightFunctions();
+    
+    // Helper to build balance cost functions (capture point)
+    void buildBalanceFunctions();
 public:
     pinocchio::FrameIndex getFrameId(const std::string& frame_name);
 };

@@ -170,6 +170,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addUprightCostDerivatives(t);
         }
         
+        // ADD BALANCE COST DERIVATIVES if weight > 0
+        if (robot_.getBalanceWeight() > 0.0) {
+            addBalanceCostDerivatives(t);
+        }
+        
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
         Eigen::VectorXd constraint_grad_u(robot_.nu());
@@ -212,6 +217,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     // ADD TERMINAL UPRIGHT COST DERIVATIVES if weight > 0
     if (robot_.getUprightWeight() > 0.0) {
         addUprightCostDerivatives(N_);
+    }
+    
+    // ADD TERMINAL BALANCE COST DERIVATIVES if weight > 0
+    if (robot_.getBalanceWeight() > 0.0) {
+        addBalanceCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -381,6 +391,51 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
             Eigen::Vector3d r_upright = z_torso - z_world;
             total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
         }
+        
+        // Add balance cost contribution (capture point)
+        if (robot_.getBalanceWeight() > 0.0) {
+            // Compute support center dynamically
+            bool left_stance = robot_.isStance(0, t);
+            bool right_stance = robot_.isStance(1, t);
+            
+            // Skip if no feet in stance (aerial phase)
+            if (left_stance || right_stance) {
+                // Compute CoM position and velocity from current state
+                Eigen::Vector3d p_com = robot_.computeCoM(x_traj[t]);
+                
+                // Extract CoM velocity (base linear velocity approximation)
+                int nq = robot_.nq();
+                Eigen::Vector3d v_com(x_traj[t](nq + 0), x_traj[t](nq + 1), x_traj[t](nq + 2));
+                
+                double h_com = p_com(2);  // CoM height
+                double g = 9.81;
+                double omega_0 = std::sqrt(h_com / g);
+                
+                // Capture point: p_cp = p_com_xy + v_com_xy * omega_0
+                Eigen::Vector2d p_cp(p_com(0) + v_com(0) * omega_0, p_com(1) + v_com(1) * omega_0);
+                
+                // Compute support center
+                Eigen::Vector2d p_support;
+                if (left_stance && right_stance) {
+                    Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
+                    Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
+                    p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
+                    p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
+                } else if (left_stance) {
+                    Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
+                    p_support(0) = left_foot(0);
+                    p_support(1) = left_foot(1);
+                } else {  // right_stance only
+                    Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
+                    p_support(0) = right_foot(0);
+                    p_support(1) = right_foot(1);
+                }
+                
+                // Balance cost: 0.5 * w * ||p_cp - p_support||²
+                Eigen::Vector2d residual_balance = p_cp - p_support;
+                total_cost += 0.5 * robot_.getBalanceWeight() * residual_balance.squaredNorm();
+            }
+        }
     }
     
     // Terminal cost
@@ -403,6 +458,50 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         Eigen::Vector3d z_world(0.0, 0.0, 1.0);
         Eigen::Vector3d r_upright = z_torso - z_world;
         total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
+    }
+    
+    // Add terminal balance cost
+    if (robot_.getBalanceWeight() > 0.0) {
+        bool left_stance = robot_.isStance(0, N_);
+        bool right_stance = robot_.isStance(1, N_);
+        
+        // Skip if no feet in stance
+        if (left_stance || right_stance) {
+            // Compute CoM position and velocity from terminal state
+            Eigen::Vector3d p_com = robot_.computeCoM(x_traj[N_]);
+            
+            // Extract CoM velocity
+            int nq = robot_.nq();
+            Eigen::Vector3d v_com(x_traj[N_](nq + 0), x_traj[N_](nq + 1), x_traj[N_](nq + 2));
+            
+            double h_com = p_com(2);
+            double g = 9.81;
+            double omega_0 = std::sqrt(h_com / g);
+            
+            // Capture point
+            Eigen::Vector2d p_cp(p_com(0) + v_com(0) * omega_0, p_com(1) + v_com(1) * omega_0);
+            
+            // Compute support center
+            Eigen::Vector2d p_support;
+            if (left_stance && right_stance) {
+                Eigen::Vector3d left_foot = robot_.getEEReference(N_, 0);
+                Eigen::Vector3d right_foot = robot_.getEEReference(N_, 1);
+                p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
+                p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
+            } else if (left_stance) {
+                Eigen::Vector3d left_foot = robot_.getEEReference(N_, 0);
+                p_support(0) = left_foot(0);
+                p_support(1) = left_foot(1);
+            } else {  // right_stance only
+                Eigen::Vector3d right_foot = robot_.getEEReference(N_, 1);
+                p_support(0) = right_foot(0);
+                p_support(1) = right_foot(1);
+            }
+            
+            // Balance cost
+            Eigen::Vector2d residual_balance = p_cp - p_support;
+            total_cost += 0.5 * robot_.getBalanceWeight() * residual_balance.squaredNorm();
+        }
     }
 
     for(int t = 0; t < N_; ++t){
@@ -631,4 +730,43 @@ void iLQR::addUprightCostDerivatives(int t) {
     // Add to cost quadratics
     lx_[t] += grad_upright;
     lxx_[t] += hess_upright;
+}
+
+void iLQR::addBalanceCostDerivatives(int t) {
+    const double w_balance = robot_.getBalanceWeight();
+    if (w_balance <= 0.0) return;
+    
+    // Compute support center dynamically based on contact state
+    Eigen::Vector2d p_support;
+    bool left_stance = robot_.isStance(0, t);   // ee_idx=0 is left foot
+    bool right_stance = robot_.isStance(1, t);  // ee_idx=1 is right foot
+    
+    if (left_stance && right_stance) {
+        // Both feet in stance: support center is average of foot positions
+        Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
+        Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
+        p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
+        p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
+    } else if (left_stance) {
+        // Only left foot in stance
+        Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
+        p_support(0) = left_foot(0);
+        p_support(1) = left_foot(1);
+    } else if (right_stance) {
+        // Only right foot in stance
+        Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
+        p_support(0) = right_foot(0);
+        p_support(1) = right_foot(1);
+    } else {
+        // No feet in stance (aerial phase) - skip balance cost
+        return;
+    }
+    
+    // Compute balance cost derivatives
+    Eigen::VectorXd grad_balance = derivatives_.BalanceGrad(xbar_[t], p_support, w_balance);
+    Eigen::MatrixXd hess_balance = derivatives_.BalanceHess(xbar_[t], p_support, w_balance);
+    
+    // Add to cost quadratics
+    lx_[t] += grad_balance;
+    lxx_[t] += hess_balance;
 }

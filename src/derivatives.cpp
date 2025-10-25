@@ -51,6 +51,7 @@ void EEDerivatives::buildSymbolicFunctions() {
     // Initialize CoM functions flag
     com_functions_built_ = false;
     upright_functions_built_ = false;
+    balance_functions_built_ = false;
     
     std::cout << "Built symbolic computation framework for state size " << nx 
               << " (nq=" << model_.nq << ", nv=" << model_.nv << ")" << std::endl;
@@ -513,6 +514,121 @@ pinocchio::FrameIndex EEDerivatives::getFrameId(const std::string& frame_name) {
         throw std::runtime_error("Frame '" + frame_name + "' not found");
     }
     return model_.getFrameId(frame_name);
+}
+
+void EEDerivatives::buildBalanceFunctions() {
+    // Extract q and v from symbolic state
+    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
+    ConfigVector q_ad(model_.nq), v_ad(model_.nv);
+    for (int i = 0; i < model_.nq; i++) q_ad[i] = x_sym_(i);
+    for (int i = 0; i < model_.nv; i++) v_ad[i] = x_sym_(model_.nq + i);
+    
+    // Compute center of mass and its velocity symbolically
+    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad, v_ad);
+    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, v_ad);
+    
+    // Extract CoM position and velocity
+    casadi::SX pcom_x = ad_data_.com[0][0];
+    casadi::SX pcom_y = ad_data_.com[0][1];
+    casadi::SX pcom_z = ad_data_.com[0][2];
+    
+    casadi::SX vcom_x = ad_data_.vcom[0][0];
+    casadi::SX vcom_y = ad_data_.vcom[0][1];
+    
+    casadi::SX h_com = pcom_z;  // CoM height
+    
+    // Capture point computation: p_cp = p_com_xy + v_com_xy * sqrt(h_com / g)
+    double g = 9.81;
+    casadi::SX omega_0 = casadi::SX::sqrt(h_com / g);
+    
+    std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
+    std::vector<casadi::SX> v_com_xy = {vcom_x, vcom_y};
+    casadi::SX p_com_2d = casadi::SX::vertcat(p_com_xy);
+    casadi::SX v_com_2d = casadi::SX::vertcat(v_com_xy);
+    
+    casadi::SX p_cp = p_com_2d + v_com_2d * omega_0;
+    
+    // Symbolic parameters
+    casadi::SX p_support = casadi::SX::sym("p_support", 2);
+    casadi::SX w_balance = casadi::SX::sym("w_balance");
+    
+    // Balance cost: 0.5 * w * ||p_cp - p_support||²
+    casadi::SX residual = p_cp - p_support;
+    casadi::SX cost = 0.5 * w_balance * casadi::SX::dot(residual, residual);
+    
+    // Compute gradient and Hessian
+    casadi::SX grad = casadi::SX::gradient(cost, x_sym_);
+    casadi::SX hess = casadi::SX::jacobian(grad, x_sym_);
+    
+    // Create CasADi functions
+    balance_grad_fn_ = casadi::Function("balance_grad",
+                                        {x_sym_, p_support, w_balance},
+                                        {grad});
+    
+    balance_hess_fn_ = casadi::Function("balance_hess",
+                                        {x_sym_, p_support, w_balance},
+                                        {hess});
+}
+
+Eigen::VectorXd EEDerivatives::BalanceGrad(const Eigen::VectorXd& x,
+                                            const Eigen::Vector2d& p_support,
+                                            double w_balance) {
+    // Build functions if not yet built
+    if (!balance_functions_built_) {
+        buildBalanceFunctions();
+        balance_functions_built_ = true;
+    }
+    
+    // Early exit if weight is zero
+    if (w_balance == 0.0) {
+        return Eigen::VectorXd::Zero(nx_);
+    }
+    
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM p_support_dm = ::casadi::DM({p_support[0], p_support[1]});
+    ::casadi::DM w_dm = ::casadi::DM(w_balance);
+    
+    // Evaluate function
+    ::casadi::DM grad_dm = balance_grad_fn_(::casadi::DMVector{x_dm, p_support_dm, w_dm})[0];
+    
+    // Convert back to Eigen
+    std::vector<double> grad_vec = grad_dm.get_elements();
+    return Eigen::Map<Eigen::VectorXd>(grad_vec.data(), grad_vec.size());
+}
+
+Eigen::MatrixXd EEDerivatives::BalanceHess(const Eigen::VectorXd& x,
+                                            const Eigen::Vector2d& p_support,
+                                            double w_balance) {
+    // Build functions if not yet built
+    if (!balance_functions_built_) {
+        buildBalanceFunctions();
+        balance_functions_built_ = true;
+    }
+    
+    // Early exit if weight is zero
+    if (w_balance == 0.0) {
+        return Eigen::MatrixXd::Zero(nx_, nx_);
+    }
+    
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM p_support_dm = ::casadi::DM({p_support[0], p_support[1]});
+    ::casadi::DM w_dm = ::casadi::DM(w_balance);
+    
+    // Evaluate function
+    ::casadi::DM hess_dm = balance_hess_fn_(::casadi::DMVector{x_dm, p_support_dm, w_dm})[0];
+    
+    // Convert back to Eigen
+    std::vector<double> hess_vec = hess_dm.get_elements();
+    Eigen::MatrixXd hess = Eigen::Map<Eigen::MatrixXd>(hess_vec.data(), nx_, nx_);
+    
+    // Ensure symmetry
+    return 0.5 * (hess + hess.transpose());
 }
 
 double validateGrad(EEDerivatives& ee_deriv,

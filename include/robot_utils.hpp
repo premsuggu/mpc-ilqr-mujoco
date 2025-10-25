@@ -65,6 +65,8 @@ public:
     double getEEVelWeight() const { return w_ee_vel_; }
     double getUprightWeight() const { return w_upright_; }
     void setUprightWeight(double w_upright) { w_upright_ = w_upright;}
+    void setBalanceWeight(double w_balance) { w_balance_ = w_balance; }
+    double getBalanceWeight() const { return w_balance_; }
     
     // Constraint cost functions
     double constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -116,6 +118,7 @@ private:
     double w_com_;  // CoM tracking weight
     double w_ee_pos_, w_ee_vel_;
     double w_upright_; // Upright Posture Penalty
+    double w_balance_; // Balance cost weight (capture point)
     
     // Constraint weights
     double w_joint_limits_;

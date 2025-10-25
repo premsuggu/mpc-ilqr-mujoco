@@ -45,6 +45,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
         config.mpc.costs.W_upright = costs_node["W_upright"].as<double>();  // Load upright weight
+        config.mpc.costs.w_balance = costs_node["w_balance"].as<double>();  // Load balance weight
         
         // Load constraints
         auto constraints_node = mpc_node["constraints"];

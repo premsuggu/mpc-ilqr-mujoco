@@ -106,6 +106,7 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     robot.setEEPosWeight(config.mpc.costs.W_foot); 
     robot.setEEVelWeight(config.mpc.costs.W_foot_vel);
     robot.setUprightWeight(config.mpc.costs.W_upright);
+    robot.setBalanceWeight(config.mpc.costs.w_balance);
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);
     if (!robot.loadReferences(config.q_ref_path, config.v_ref_path)) {
         throw std::runtime_error("Failed to load reference trajectories.");

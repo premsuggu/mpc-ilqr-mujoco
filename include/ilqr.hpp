@@ -93,6 +93,7 @@ private:
     void addEEPosCostDerivatives(int t);
     void addEEVelCostDerivatives(int t);
     void addUprightCostDerivatives(int t);
+    void addBalanceCostDerivatives(int t);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

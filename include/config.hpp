@@ -14,6 +14,7 @@ struct CostWeights {
     double Qf_multiplier, Qf_position_xy, Qf_position_z, Qf_vel_z;
     double W_com, W_foot, W_foot_vel;
     double W_upright;
+    double w_balance;
 };
 
 // Struct to hold MPC parameters
