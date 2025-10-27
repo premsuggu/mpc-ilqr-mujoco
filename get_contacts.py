@@ -154,7 +154,7 @@ def main():
     contact_df = pd.DataFrame(contact_schedule, columns=['left_foot', 'right_foot'])
     contact_df.to_csv(output_path, index=False)
     if save_mj_trajecotry and pinocchio_convention:
-        q_ref.to_csv("data/q_ref_mj.csv", index = False, header = False)
+        q_ref.to_csv("data/q_ref2_mj.csv", index = False, header = False)
     
     print(f"\n✓ Contact schedule saved to {output_path}")
     print(f"  Shape: {contact_df.shape}")

@@ -104,6 +104,27 @@ public:
                               const std::string& frame_name,
                               double weight = 1.0);
     
+    /**
+     * @brief Compute center-of-mass velocity gradient (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param target_com_vel Target CoM velocity [vx, vy, vz]
+     * @param weight Cost weight
+     * @return Gradient vector w.r.t. full state [q, v]
+     */
+    Eigen::VectorXd CoMVelGrad(const Eigen::VectorXd& x,
+                               const Eigen::Vector3d& target_com_vel,
+                               double weight = 1.0);
+
+    /**
+     * @brief Compute center-of-mass velocity hessian (cached, fast evaluation)
+     * @param x Full state vector [q, v]
+     * @param target_com_vel Target CoM velocity [vx, vy, vz]
+     * @param weight Cost weight
+     * @return Hessian matrix w.r.t. full state [q, v]
+     */
+    Eigen::MatrixXd CoMVelHess(const Eigen::VectorXd& x,
+                               const Eigen::Vector3d& target_com_vel,
+                               double weight = 1.0);
 
     Eigen::VectorXd UprightGrad(const Eigen::VectorXd& x, 
                                 double w_upright);
@@ -166,6 +187,11 @@ private:
     ::casadi::Function com_grad_fn_;     // CoM gradient function
     ::casadi::Function com_hess_fn_;     // CoM Hessian function
     bool com_functions_built_;
+    
+    // CoM velocity cost functions (single instance, separate from position)
+    ::casadi::Function com_vel_grad_fn_;     // CoM velocity gradient function
+    ::casadi::Function com_vel_hess_fn_;     // CoM velocity Hessian function
+    bool com_vel_functions_built_;
 
     // Upright cost funtion
     ::casadi::Function upright_grad_fn_;
@@ -191,6 +217,9 @@ private:
     
     // Helper to build CoM functions (once)
     void buildCoMFunctions();
+    
+    // Helper to build CoM velocity functions (once, separate from position)
+    void buildCoMVelFunctions();
 
     // Helper to build upright cost functions
     void buildUprightFunctions();

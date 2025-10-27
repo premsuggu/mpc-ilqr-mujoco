@@ -155,6 +155,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addCoMCostDerivatives(t, com_ref_[t]);
         }
         
+        // ADD CoM VELOCITY TRACKING DERIVATIVES if weight > 0 (SEPARATE from position)
+        if (robot_.getCoMVelWeight() > 0.0) {
+            addCoMVelCostDerivatives(t);
+        }
+        
         // ADD EE POSITION TRACKING DERIVATIVES if weight > 0
         if (robot_.getEEPosWeight() > 0.0) {
             addEEPosCostDerivatives(t);
@@ -664,6 +669,29 @@ void iLQR::addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref) {
     // Add to cost quadratics
     lx_[t] += grad_com;
     lxx_[t] += hess_com;
+}
+
+// CoM Velocity Cost Derivatives (SEPARATE from position tracking)
+void iLQR::addCoMVelCostDerivatives(int t) {
+    const double w_com_vel = robot_.getCoMVelWeight();
+    
+    // Skip if weight is zero (disabled)
+    if (w_com_vel <= 0.0) return;
+    
+    try {
+        Eigen::Vector3d com_vel_ref = robot_.getCoMVelReference(t);
+        
+        // Use symbolic derivatives (fast and exact!)
+        Eigen::VectorXd grad_com_vel = derivatives_.CoMVelGrad(xbar_[t], com_vel_ref, w_com_vel);
+        Eigen::MatrixXd hess_com_vel = derivatives_.CoMVelHess(xbar_[t], com_vel_ref, w_com_vel);
+        
+        // Add to cost quadratics
+        lx_[t] += grad_com_vel;
+        lxx_[t] += hess_com_vel;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: CoM velocity cost error at t=" << t << ": " << e.what() << std::endl;
+    }
 }
 
 void iLQR::addEEPosCostDerivatives(int t) {

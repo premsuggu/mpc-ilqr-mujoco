@@ -50,6 +50,7 @@ void EEDerivatives::buildSymbolicFunctions() {
     
     // Initialize CoM functions flag
     com_functions_built_ = false;
+    com_vel_functions_built_ = false;
     upright_functions_built_ = false;
     balance_functions_built_ = false;
     
@@ -213,6 +214,62 @@ void EEDerivatives::buildCoMFunctions() {
     
     com_functions_built_ = true;
     std::cout << "Built cached CoM functions" << std::endl;
+}
+
+// Build CoM velocity cost functions (SEPARATE from position)
+void EEDerivatives::buildCoMVelFunctions() {
+    // Create symbolic input parameters
+    ::casadi::SX target_com_vel_sym = ::casadi::SX::sym("target_com_vel", 3);
+    ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
+    
+    // Set up symbolic configuration and velocity for kinematics
+    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
+    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> TangentVector;
+    
+    ConfigVector q_ad(model_.nq);
+    TangentVector v_ad(model_.nv);
+    
+    for (int i = 0; i < model_.nq; i++) {
+        q_ad[i] = x_sym_(i);  // First nq elements of full state
+    }
+    for (int i = 0; i < model_.nv; i++) {
+        v_ad[i] = x_sym_(model_.nq + i);  // Last nv elements of full state
+    }
+    
+    // Symbolic forward kinematics and CoM velocity computation
+    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad, v_ad);
+    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, v_ad);  // Compute CoM position and velocity
+    
+    // Extract symbolic CoM velocity components
+    ::casadi::SX com_vel_x = ad_data_.vcom[0][0];  // vx component
+    ::casadi::SX com_vel_y = ad_data_.vcom[0][1];  // vy component  
+    ::casadi::SX com_vel_z = ad_data_.vcom[0][2];  // vz component
+    
+    std::vector<::casadi::SX> com_vel_components;
+    com_vel_components.push_back(com_vel_x);
+    com_vel_components.push_back(com_vel_y);
+    com_vel_components.push_back(com_vel_z);
+    ::casadi::SX com_vel = ::casadi::SX::vertcat(com_vel_components);
+    
+    // Velocity error and cost
+    ::casadi::SX com_vel_error = com_vel - target_com_vel_sym;
+    ::casadi::SX com_vel_cost = weight_sym * ::casadi::SX::dot(com_vel_error, com_vel_error);
+    
+    // Build cached CoM velocity functions
+    ::casadi::SX com_vel_grad = ::casadi::SX::gradient(com_vel_cost, x_sym_);
+    com_vel_grad_fn_ = ::casadi::Function(
+        "com_vel_grad",
+        {x_sym_, target_com_vel_sym, weight_sym}, {com_vel_grad}
+    );
+    
+    ::casadi::SX com_vel_hess = ::casadi::SX::jacobian(com_vel_grad, x_sym_);
+    com_vel_hess_fn_ = ::casadi::Function(
+        "com_vel_hess", 
+        {x_sym_, target_com_vel_sym, weight_sym}, {com_vel_hess}
+    );
+    
+    com_vel_functions_built_ = true;
+    std::cout << "Built cached CoM velocity functions" << std::endl;
 }
 
 // For keeping the robot upright
@@ -383,6 +440,72 @@ Eigen::MatrixXd EEDerivatives::CoMHess(const Eigen::VectorXd& x,
     
     // Evaluate cached function (fast!)
     ::casadi::DM hess_dm = com_hess_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
+    
+    // Convert back to Eigen (full state size)
+    int nx = model_.nq + model_.nv;
+    Eigen::MatrixXd hessian(nx, nx);
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < nx; j++) {
+            hessian(i, j) = double(hess_dm(i, j));
+        }
+    }
+    
+    return hessian;
+}
+
+// CoM Velocity Gradient (SEPARATE from position tracking)
+Eigen::VectorXd EEDerivatives::CoMVelGrad(const Eigen::VectorXd& x,
+                                          const Eigen::Vector3d& target_com_vel,
+                                          double weight) {
+    
+    // Ensure CoM velocity functions are built
+    if (!com_vel_functions_built_) {
+        buildCoMVelFunctions();
+    }
+    
+    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    
+    // Convert inputs to CasADi format
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM target_vel_dm = ::casadi::DM({target_com_vel[0], target_com_vel[1], target_com_vel[2]});
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    // Evaluate cached function (fast!)
+    ::casadi::DM grad_dm = com_vel_grad_fn_(::casadi::DMVector{x_dm, target_vel_dm, weight_dm})[0];
+    
+    // Convert back to Eigen (full state size)
+    int nx = model_.nq + model_.nv;
+    Eigen::VectorXd gradient(nx);
+    for (int i = 0; i < nx; i++) {
+        gradient(i) = double(grad_dm(i));
+    }
+    
+    return gradient;
+}
+
+// CoM Velocity Hessian (SEPARATE from position tracking)
+Eigen::MatrixXd EEDerivatives::CoMVelHess(const Eigen::VectorXd& x,
+                                          const Eigen::Vector3d& target_com_vel,
+                                          double weight) {
+    
+    // Ensure CoM velocity functions are built
+    if (!com_vel_functions_built_) {
+        buildCoMVelFunctions();
+    }
+    
+    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
+    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
+    
+    // Convert inputs to CasADi format
+    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM target_vel_dm = ::casadi::DM({target_com_vel[0], target_com_vel[1], target_com_vel[2]});
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    // Evaluate cached function (fast!)
+    ::casadi::DM hess_dm = com_vel_hess_fn_(::casadi::DMVector{x_dm, target_vel_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;

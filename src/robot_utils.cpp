@@ -6,7 +6,7 @@
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
-      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_ee_pos_(0.0), w_ee_vel_(0.0), 
+      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_com_vel_(0.0), w_ee_pos_(0.0), w_ee_vel_(0.0), 
       w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0), w_balance_(0.0) {
 }
 
@@ -296,6 +296,7 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
     x_ref_full_.clear();
     u_ref_full_.clear();
     com_ref_full_.clear();
+    com_vel_ref_full_.clear();
     ee_pos_ref_full_.clear();
     ee_vel_ref_full_.clear();
     
@@ -377,6 +378,17 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
             com_ref(i) = temp_data->subtree_com[3 + i];
         }
         com_ref_full_.push_back(com_ref);
+        
+        // CoM velocity reference: use Jacobian method (SEPARATE from position)
+        mjtNum jac_com[3 * model_->nv];
+        mju_zero(jac_com, 3 * model_->nv);
+        mj_jacSubtreeCom(model_, temp_data, jac_com, 0); // Body 0 is the root
+        
+        Eigen::Map<Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>> 
+            J_com(jac_com, 3, model_->nv);
+        Eigen::VectorXd qvel = Eigen::Map<const Eigen::VectorXd>(temp_data->qvel, model_->nv);
+        Eigen::Vector3d com_vel_ref = J_com * qvel;
+        com_vel_ref_full_.push_back(com_vel_ref);
         
         // End-effector position and velocity references
         std::vector<Eigen::Vector3d> ee_pos_refs, ee_vel_refs;
@@ -526,6 +538,14 @@ Eigen::Vector3d RobotUtils::getEEVelReference(int t, int ee_idx) const {
     }
     
     return ee_vel_ref_full_[t][ee_idx];
+}
+
+Eigen::Vector3d RobotUtils::getCoMVelReference(int t) const {
+    if (t >= (int)com_vel_ref_full_.size()) {
+        throw std::runtime_error("Invalid CoM velocity reference index: t=" + std::to_string(t));
+    }
+    
+    return com_vel_ref_full_[t];
 }
 
 void RobotUtils::resetToReference(int t) {

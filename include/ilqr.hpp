@@ -90,6 +90,7 @@ private:
     
     // Symbolic cost derivatives (replacing finite difference methods)
     void addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref);
+    void addCoMVelCostDerivatives(int t);  // SEPARATE velocity tracking
     void addEEPosCostDerivatives(int t);
     void addEEVelCostDerivatives(int t);
     void addUprightCostDerivatives(int t);

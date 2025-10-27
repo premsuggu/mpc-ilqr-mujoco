@@ -42,6 +42,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.Qf_position_z = costs_node["Qf_position_z"].as<double>();
         config.mpc.costs.Qf_vel_z = costs_node["Qf_vel_z"].as<double>();
         config.mpc.costs.W_com = costs_node["W_com"].as<double>();
+        config.mpc.costs.W_com_vel = costs_node["W_com_vel"].as<double>();
         config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
         config.mpc.costs.W_upright = costs_node["W_upright"].as<double>();  // Load upright weight

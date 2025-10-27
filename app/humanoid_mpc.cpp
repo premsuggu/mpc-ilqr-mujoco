@@ -103,6 +103,7 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     config.buildCostMatrices(robot.nx(), robot.nu(), robot.nq());
     robot.setCostWeights(config.Q, config.R, config.Qf);
     robot.setCoMWeight(config.mpc.costs.W_com);
+    robot.setCoMVelWeight(config.mpc.costs.W_com_vel);
     robot.setEEPosWeight(config.mpc.costs.W_foot); 
     robot.setEEVelWeight(config.mpc.costs.W_foot_vel);
     robot.setUprightWeight(config.mpc.costs.W_upright);

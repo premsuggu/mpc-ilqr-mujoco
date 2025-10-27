@@ -59,6 +59,8 @@ public:
                         const Eigen::MatrixXd& Qf);
     void setCoMWeight(double w_com) { w_com_ = w_com; }
     double getCoMWeight() const { return w_com_; }
+    void setCoMVelWeight(double w_com_vel) { w_com_vel_ = w_com_vel; }
+    double getCoMVelWeight() const { return w_com_vel_; }
     void setEEPosWeight(double w_ee) { w_ee_pos_ = w_ee; }
     double getEEPosWeight() const { return w_ee_pos_; }
     void setEEVelWeight(double w_ee_vel) { w_ee_vel_ = w_ee_vel; }
@@ -94,6 +96,7 @@ public:
     std::string getEEFrameName(int ee_idx) const;
     Eigen::Vector3d getEEReference(int t, int ee_idx) const;
     Eigen::Vector3d getEEVelReference(int t, int ee_idx) const;
+    Eigen::Vector3d getCoMVelReference(int t) const;
     void resetToReference(int t);
     void initializeStandingPose();
     void computeGravComp(Eigen::VectorXd& ugrav) const;
@@ -116,6 +119,7 @@ private:
     // Cost matrices
     Eigen::MatrixXd Q_, R_, Qf_;
     double w_com_;  // CoM tracking weight
+    double w_com_vel_;  // CoM velocity tracking weight (separate from position)
     double w_ee_pos_, w_ee_vel_;
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
@@ -128,6 +132,7 @@ private:
     std::vector<Eigen::VectorXd> x_ref_full_;
     std::vector<Eigen::VectorXd> u_ref_full_;
     std::vector<Eigen::Vector3d> com_ref_full_;
+    std::vector<Eigen::Vector3d> com_vel_ref_full_;  // CoM velocity references (separate)
     std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;  // [time][ee_idx] = position
     std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;  // [time][ee_idx] = velocity
     
