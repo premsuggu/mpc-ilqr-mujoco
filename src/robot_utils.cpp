@@ -380,12 +380,12 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
         com_ref_full_.push_back(com_ref);
         
         // CoM velocity reference: use Jacobian method (SEPARATE from position)
-        mjtNum jac_com[3 * model_->nv];
-        mju_zero(jac_com, 3 * model_->nv);
-        mj_jacSubtreeCom(model_, temp_data, jac_com, 0); // Body 0 is the root
+        std::vector<mjtNum> jac_com(3 * model_->nv);
+        mju_zero(jac_com.data(), 3 * model_->nv);
+        mj_jacSubtreeCom(model_, temp_data, jac_com.data(), 0); // Body 0 is the root
         
         Eigen::Map<Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>> 
-            J_com(jac_com, 3, model_->nv);
+            J_com(jac_com.data(), 3, model_->nv);
         Eigen::VectorXd qvel = Eigen::Map<const Eigen::VectorXd>(temp_data->qvel, model_->nv);
         Eigen::Vector3d com_vel_ref = J_com * qvel;
         com_vel_ref_full_.push_back(com_vel_ref);
