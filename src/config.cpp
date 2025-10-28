@@ -27,21 +27,24 @@ Config loadConfigFromFile(const std::string& filepath) {
 
         // Load cost weights
         auto costs_node = mpc_node["cost_weights"];
-        config.mpc.costs.Q_position_xy = costs_node["Q_position_xy"].as<double>();
+        config.mpc.costs.Q_position_x = costs_node["Q_position_x"].as<double>();
+        config.mpc.costs.Q_position_y = costs_node["Q_position_y"].as<double>();
         config.mpc.costs.Q_position_z = costs_node["Q_position_z"].as<double>();
         config.mpc.costs.Q_quat_w = costs_node["Q_quat_w"].as<double>();
         config.mpc.costs.Q_quat_xyz = costs_node["Q_quat_xyz"].as<std::vector<double>>();
         config.mpc.costs.Q_joint_pos = costs_node["Q_joint_pos"].as<double>();
-        config.mpc.costs.Q_vel_xy = costs_node["Q_vel_xy"].as<double>();
+        config.mpc.costs.Q_vel_x = costs_node["Q_vel_x"].as<double>();
+        config.mpc.costs.Q_vel_y = costs_node["Q_vel_y"].as<double>();
         config.mpc.costs.Q_vel_z = costs_node["Q_vel_z"].as<double>();
         config.mpc.costs.Q_ang_vel = costs_node["Q_ang_vel"].as<double>();
         config.mpc.costs.Q_joint_vel = costs_node["Q_joint_vel"].as<double>();
         config.mpc.costs.R_control = costs_node["R_control"].as<double>();
         config.mpc.costs.Qf_multiplier = costs_node["Qf_multiplier"].as<double>();
-        config.mpc.costs.Qf_position_xy = costs_node["Qf_position_xy"].as<double>();
+        config.mpc.costs.Qf_position_x = costs_node["Qf_position_x"].as<double>();
+        config.mpc.costs.Qf_position_y = costs_node["Qf_position_y"].as<double>();
         config.mpc.costs.Qf_position_z = costs_node["Qf_position_z"].as<double>();
         config.mpc.costs.Qf_vel_z = costs_node["Qf_vel_z"].as<double>();
-        config.mpc.costs.W_com = costs_node["W_com"].as<double>();
+        config.mpc.costs.W_com = costs_node["W_com_pos"].as<double>();
         config.mpc.costs.W_com_vel = costs_node["W_com_vel"].as<double>();
         config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
@@ -69,8 +72,8 @@ void Config::buildCostMatrices(int nx, int nu, int nq) {
     // Build Q matrix (state deviation weights)
     
     // Position tracking weights (CoM position in world frame)
-    Q(0, 0) = mpc.costs.Q_position_xy;   // X position
-    Q(1, 1) = mpc.costs.Q_position_xy;   // Y position
+    Q(0, 0) = mpc.costs.Q_position_x;   // X position
+    Q(1, 1) = mpc.costs.Q_position_y;   // Y position
     Q(2, 2) = mpc.costs.Q_position_z;    // Z position (critical)
     
     // Orientation tracking weights (quaternion representation)
@@ -85,8 +88,8 @@ void Config::buildCostMatrices(int nx, int nu, int nq) {
     }
     
     // Velocity tracking weights (linear velocities)
-    Q(nq + 0, nq + 0) = mpc.costs.Q_vel_xy;    // vx
-    Q(nq + 1, nq + 1) = mpc.costs.Q_vel_xy;    // vy
+    Q(nq + 0, nq + 0) = mpc.costs.Q_vel_x;    // vx
+    Q(nq + 1, nq + 1) = mpc.costs.Q_vel_y;    // vy
     Q(nq + 2, nq + 2) = mpc.costs.Q_vel_z;     // vz (critical)
     
     // Angular velocity tracking weights
@@ -108,8 +111,8 @@ void Config::buildCostMatrices(int nx, int nu, int nq) {
     Qf = Q * mpc.costs.Qf_multiplier;
     
     // Apply additional terminal weight multipliers to specific states
-    Qf(0, 0) *= mpc.costs.Qf_position_xy;      // Final X position
-    Qf(1, 1) *= mpc.costs.Qf_position_xy;      // Final Y position
+    Qf(0, 0) *= mpc.costs.Qf_position_x;      // Final X position
+    Qf(1, 1) *= mpc.costs.Qf_position_y;      // Final Y position
     Qf(2, 2) *= mpc.costs.Qf_position_z;       // Final Z position
     Qf(nq + 2, nq + 2) *= mpc.costs.Qf_vel_z;  // Final Z velocity (critical)
     

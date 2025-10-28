@@ -21,14 +21,14 @@ Eigen::VectorXd convertMuJoCoToPinocchio(const Eigen::VectorXd& mujoco_state, in
 /**
  * @brief Efficient end-effector derivatives using Pinocchio-CasADi symbolic differentiation
  */
-class EEDerivatives {
+class symDerivatives {
 public:
     /**
      * @brief Initialize with robot model
      * @param urdf_path Path to URDF model
      * @param floating_base Use floating base model
      */
-    EEDerivatives(const std::string& urdf_path, bool floating_base = true);
+    symDerivatives(const std::string& urdf_path, bool floating_base = true);
 
     /**
      * @brief Compute end-effector position gradient (cached, fast evaluation)
@@ -226,18 +226,27 @@ private:
     
     // Helper to build balance cost functions (capture point)
     void buildBalanceFunctions();
+    
+    // Symbolic cost expression helpers 
+    ::casadi::SX symCoMPos(const ::casadi::SX& target_com,
+                           const ::casadi::SX& weight);
+    
+    ::casadi::SX symCoMVel(const ::casadi::SX& target_com_vel,
+                           const ::casadi::SX& weight);
+    
+    ::casadi::SX symEEPos(const ::casadi::SX& target_pos,
+                          const ::casadi::SX& weight,
+                          pinocchio::FrameIndex frame_id);
+    
+    ::casadi::SX symEEVel(const ::casadi::SX& target_vel,
+                          const ::casadi::SX& weight,
+                          pinocchio::FrameIndex frame_id);
+    
+    ::casadi::SX symUpright(const ::casadi::SX& weight);
+    
+    ::casadi::SX symBalance(const ::casadi::SX& p_support,
+                            const ::casadi::SX& weight);
 public:
     pinocchio::FrameIndex getFrameId(const std::string& frame_name);
 };
-
-/**
- * @brief Validate gradient accuracy
- */
-double validateGrad(EEDerivatives& ee_deriv,
-                    const Eigen::VectorXd& q,
-                    const Eigen::Vector3d& target,
-                    const std::string& frame_name,
-                    double weight = 1.0,
-                    double eps = 1e-7);
-
 } // namespace derivatives

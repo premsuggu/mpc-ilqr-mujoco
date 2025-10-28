@@ -46,7 +46,7 @@ public:
 
 private:
     RobotUtils& robot_;
-    derivatives::EEDerivatives derivatives_;  // Symbolic derivatives system
+    derivatives::symDerivatives derivatives_;  // Symbolic derivatives system
     int N_;      // Horizon length
     double dt_;
 

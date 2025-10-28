@@ -7,11 +7,11 @@
 
 // Struct to hold cost function weights
 struct CostWeights {
-    double Q_position_xy, Q_position_z, Q_quat_w;
+    double Q_position_x, Q_position_y, Q_position_z, Q_quat_w;
     std::vector<double> Q_quat_xyz;
-    double Q_joint_pos, Q_vel_xy, Q_vel_z, Q_ang_vel, Q_joint_vel;
+    double Q_joint_pos, Q_vel_x, Q_vel_y, Q_vel_z, Q_ang_vel, Q_joint_vel;
     double R_control;
-    double Qf_multiplier, Qf_position_xy, Qf_position_z, Qf_vel_z;
+    double Qf_multiplier, Qf_position_x, Qf_position_y, Qf_position_z, Qf_vel_z;
     double W_com, W_com_vel, W_foot, W_foot_vel;
     double W_upright;
     double w_balance;

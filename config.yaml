@@ -23,36 +23,39 @@ mpc:
 
   cost_weights:
     # State deviation weights (Q matrix)
-    Q_position_xy: 200.0      # X,Y position weight
+    Q_position_x: 200.0      # X,Y position weight
+    Q_position_y: 50.0       # Y position weight
     Q_position_z: 200.0      # Z position weight (critical)
     Q_quat_w: 50.0           # Quaternion real part
     Q_quat_xyz: [50.0, 50.0, 50.0]  # [qx, qy, qz] - roll, pitch, yaw
-    Q_joint_pos: 100.0         # Joint position tracking
-    Q_vel_xy: 150.0           # X,Y velocity damping
+    Q_joint_pos: 50.0        # Joint position tracking
+    Q_vel_x: 150.0           # X velocity damping
+    Q_vel_y: 50.0            # Y velocity damping
     Q_vel_z: 150.0           # Z velocity damping (critical)
     Q_ang_vel: 75.0          # Angular velocity damping
     Q_joint_vel: 75.0        # Joint velocity damping
     
     # Control effort weight (R matrix)
-    R_control: 0.005           # Control effort penalty
+    R_control: 0.001           # Control effort penalty
     
     # Terminal cost multiplier (Qf = Q * Qf_multiplier)
-    Qf_multiplier: 2.0       # Terminal cost base multiplier
-    Qf_position_xy: 3.0       # Additional multiplier for terminal X,Y
+    Qf_multiplier: 2.0        # Terminal cost base multiplier
+    Qf_position_x: 5.0        # Additional multiplier for terminal X
+    Qf_position_y: 2.0        # Additional multiplier for terminal Y
     Qf_position_z: 5.0        # Additional multiplier for terminal Z
     Qf_vel_z: 4.0             # Additional multiplier for terminal Z velocity
     
     # Task-specific weights
-    W_com: 100.0              # Center of Mass tracking weight
+    W_com_pos: 100.0            # Center of Mass tracking weight
     W_com_vel: 200.0            # Center of Mass velocity tracking weight
-    W_foot: 80.0             # End-effector position tracking weight
-    W_foot_vel: 80.0         # End-effector velocity tracking weight
-    W_upright: 20.0          # Upright posture penalty
-    w_balance: 30.0            # Balance maintenance weight (capture point)
+    W_foot: 400.0               # End-effector position tracking weight
+    W_foot_vel: 400.0           # End-effector velocity tracking weight
+    W_upright: 20.0             # Upright posture penalty
+    w_balance: 30.0             # Balance maintenance weight (capture point)
 
   constraints:
-    joint_limit_weight: 1000.0    # Joint limit soft constraint penalty
-    torque_limit_weight: 1000.0   # Torque limit soft constraint penalty
+    joint_limit_weight: 1500.0    # Joint limit soft constraint penalty
+    torque_limit_weight: 1500.0   # Torque limit soft constraint penalty
 
 paths:
   logs_dir: "logs"          # Directory for log files
