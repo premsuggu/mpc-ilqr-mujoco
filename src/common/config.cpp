@@ -1,4 +1,4 @@
-#include "config.hpp"
+#include "common/config.hpp"
 #include <iostream>
 
 Config loadConfigFromFile(const std::string& filepath) {

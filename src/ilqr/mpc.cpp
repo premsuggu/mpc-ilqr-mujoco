@@ -1,5 +1,5 @@
 // src/mpc.cpp
-#include "mpc.hpp"
+#include "ilqr/mpc.hpp"
 #include <iostream>
 #include <chrono>
 

@@ -1,4 +1,4 @@
-#include "derivatives.hpp"
+#include "common/derivatives.hpp"
 #include <pinocchio/parsers/urdf.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/frames.hpp>

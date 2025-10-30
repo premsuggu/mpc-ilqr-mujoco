@@ -1,4 +1,4 @@
-#include "ilqr.hpp"
+#include "ilqr/ilqr.hpp"
 #include <iostream>
 #include <chrono>
 

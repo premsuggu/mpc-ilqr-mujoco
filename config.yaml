@@ -47,7 +47,7 @@ mpc:
     
     # Task-specific weights
     W_com_pos: 100.0            # Center of Mass tracking weight
-    W_com_vel: 200.0            # Center of Mass velocity tracking weight
+    W_com_vel: 0.0            # Center of Mass velocity tracking weight
     W_foot: 400.0               # End-effector position tracking weight
     W_foot_vel: 400.0           # End-effector velocity tracking weight
     W_upright: 20.0             # Upright posture penalty

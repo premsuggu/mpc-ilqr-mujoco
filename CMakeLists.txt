@@ -15,7 +15,11 @@ endif()
 
 # Find packages in conda environment
 if(DEFINED ENV{CONDA_PREFIX})
-    set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX};${CMAKE_PREFIX_PATH}")
+    # CRITICAL: Put conda FIRST to avoid system libraries
+    set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
+    set(CMAKE_FIND_ROOT_PATH "$ENV{CONDA_PREFIX}")
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
     # Typical Unix-like layout
     include_directories("$ENV{CONDA_PREFIX}/include")
     include_directories("$ENV{CONDA_PREFIX}/include/eigen3")
@@ -34,12 +38,12 @@ include_directories(include)
 
 # Main executable only
 add_executable(humanoid_mpc
-    src/robot_utils.cpp
-    src/ilqr.cpp
-    src/mpc.cpp
-    src/derivatives.cpp
-    src/config.cpp
-    app/humanoid_mpc.cpp
+    src/common/robot_utils.cpp
+    src/common/config.cpp
+    src/common/derivatives.cpp
+    src/ilqr/ilqr.cpp
+    src/ilqr/mpc.cpp
+    main/humanoid_mpc.cpp
 )
 
 # Fix Pinocchio hidden symbol issue on Linux CI
