@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/robot_utils.hpp"
-#include "common/derivatives.hpp"
+#include "ilqr/robot_utils.hpp"
+#include "ilqr/derivatives.hpp"
 #include <vector>
 
 /**

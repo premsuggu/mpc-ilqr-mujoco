@@ -1,4 +1,4 @@
-#include "common/config.hpp"
+#include "ilqr/config.hpp"
 #include <iostream>
 
 Config loadConfigFromFile(const std::string& filepath) {

@@ -1,7 +1,7 @@
-#include "common/robot_utils.hpp"
+#include "ilqr/robot_utils.hpp"
 #include "ilqr/ilqr.hpp"
 #include "ilqr/mpc.hpp"
-#include "common/config.hpp"
+#include "ilqr/config.hpp"
 #include <iostream>
 #include <chrono>
 #include <map>

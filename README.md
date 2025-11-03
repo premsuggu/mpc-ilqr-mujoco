@@ -229,22 +229,40 @@ Final:    407.26 MB
 
 ## 📊 Project Structure
 
+This project implements **two separate MPC pipelines**:
+1. **iLQR-based MPC** (`humanoid_mpc`) - Fast gradient-based optimization
+2. **NLP-based MPC** (`nlp_mpc`) - Direct trajectory optimization using IPOPT
+
 ```
 mujoco_mpc/
-├── app/
-│   └── humanoid_mpc.cpp          # Main MPC application
+├── main/
+│   ├── humanoid_mpc.cpp          # iLQR pipeline entry point
+│   └── main_nlp.cpp              # NLP pipeline entry point
 ├── include/
-│   ├── robot_utils.hpp           # MuJoCo wrapper + kinematics
-│   ├── ilqr.hpp                  # iLQR solver implementation
-│   ├── mpc.hpp                   # MPC orchestrator with warm-start
-│   ├── derivatives.hpp           # Symbolic differentiation (Pinocchio+CasADi)
-│   └── config.hpp                # YAML configuration loader
+│   ├── ilqr/                     # iLQR MPC implementation
+│   │   ├── robot_utils.hpp       # MuJoCo wrapper + dynamics
+│   │   ├── ilqr.hpp              # iLQR solver algorithm
+│   │   ├── mpc.hpp               # MPC orchestrator with warm-start
+│   │   ├── derivatives.hpp       # Symbolic differentiation (Pinocchio+CasADi)
+│   │   └── config.hpp            # YAML configuration loader
+│   └── nlp/                      # NLP MPC implementation (best practices)
+│       ├── nlp_config.hpp        # Configuration structs (weights, options)
+│       ├── nlp_utils.hpp         # Utilities (CSV I/O, Pinocchio helpers)
+│       ├── sym_utils.hpp         # Symbolic expressions (costs, dynamics, constraints)
+│       ├── mpc_utils.hpp         # MPC orchestration (References, ContactSchedule, loop)
+│       └── nlp_solver.hpp        # IPOPT solver interface
 ├── src/
-│   ├── robot_utils.cpp           # Robot state management + rollout
-│   ├── ilqr.cpp                  # iLQR optimization algorithm
-│   ├── mpc.cpp                   # MPC control loop
-│   ├── derivatives.cpp           # CoM + end-effector derivatives
-│   └── config.cpp                # Configuration parser
+│   ├── ilqr/                     # iLQR implementation files
+│   │   ├── robot_utils.cpp       # Robot state management + rollout
+│   │   ├── ilqr.cpp              # iLQR optimization algorithm
+│   │   ├── mpc.cpp               # MPC control loop
+│   │   ├── derivatives.cpp       # CoM + end-effector derivatives
+│   │   └── config.cpp            # Configuration parser
+│   └── nlp/                      # NLP implementation files
+│       ├── nlp_utils.cpp         # Utility implementations
+│       ├── sym_utils.cpp         # Symbolic expression building
+│       ├── nlp_solver.cpp        # IPOPT solver setup and callbacks
+│       └── mpc_utils.cpp         # MPC loop orchestration
 ├── robots/
 │   └── h1_description/           # Unitree H1 robot URDF/MJCF files
 │       ├── urdf/h1.urdf          # Robot model for Pinocchio
@@ -258,11 +276,11 @@ mujoco_mpc/
 │   ├── q_optimal.csv             # Optimal state trajectory
 │   ├── u_optimal.csv             # Optimal control sequence
 │   └── stands.gif                # Demo visualization
-├── config.yaml                   # Central configuration file
+├── config.yaml                   # iLQR pipeline configuration
 ├── simulate.py                   # 3D MuJoCo visualization script
 ├── plotter.py                    # Performance analysis plotting
 ├── environment.yml               # Conda environment definition
-├── CMakeLists.txt                # Build configuration
+├── CMakeLists.txt                # Build configuration (builds both pipelines)
 └── README.md                     # This file
 ```
 
@@ -288,6 +306,73 @@ J = Σ(||x - x_ref||²_Q + ||u||²_R) + ||x_N - x_ref_N||²_Qf
 ### **Symbolic Derivatives**
 - **CoM Jacobian & Hessian**: Pinocchio analytical computation
 - **End-effector Jacobian & Hessian**: CasADi automatic differentiation
+
+<details>
+<summary><h2>🔬 NLP-Based MPC Pipeline (Previous Implementation)</h2></summary>
+
+The project includes an alternative **NLP-based MPC** implementation that uses direct trajectory optimization with the IPOPT solver. This is a cleaner, more modular architecture following software engineering best practices.
+
+### **Architecture Overview**
+
+The NLP pipeline is organized into separate modules with clear responsibilities:
+
+- **nlp_config.hpp**: Configuration structs (CostWeights, SolverOptions, NLPConfig)
+- **nlp_utils**: Reusable utilities (CSV I/O, Pinocchio helpers)
+- **sym_utils**: ALL symbolic expressions (costs + dynamics + constraints)
+- **mpc_utils**: MPC orchestration (References, ContactSchedule, MPCResults, loop logic)
+- **nlp_solver**: The IPOPT interface layer
+
+### **Build & Run NLP Pipeline**
+
+```bash
+# Activate conda environment
+conda activate humanoid-mpc
+
+# Build NLP executable (already built with main build)
+cd build
+make nlp_mpc -j8
+
+# Run NLP MPC
+./nlp_mpc  # Linux/macOS
+nlp_mpc.exe  # Windows
+```
+
+### **NLP Algorithm Details**
+
+**Method**: Direct trajectory optimization using IPOPT (Interior Point Optimizer)
+- **Variables**: Full trajectory {x₀, u₀, x₁, u₁, ..., x_N}
+- **Constraints**: 
+  - Dynamics: x_{t+1} = f(x_t, u_t) using semi-implicit Euler integration
+  - Torque limits: τ = M(q)a + C(q,v) + g(q) ≤ τ_max
+- **Cost**: Quadratic tracking cost + control effort penalty
+- **Solver**: IPOPT with analytical gradients from CasADi
+
+### **Extending NLP Pipeline**
+
+**Add custom cost term** in `sym_utils.cpp`:
+```cpp
+// Add to buildStageCost() function
+casadi::SX custom_cost = /* your expression */;
+total_cost += custom_cost;
+```
+
+**Add constraint** in `sym_utils.cpp`:
+```cpp
+// Add to buildDynamicsFunctions()
+casadi::SX constraint = /* your constraint expression */;
+constraint_fns_["my_constraint"] = casadi::Function("my_constraint", {q, v, u}, {constraint});
+```
+
+**Modify solver options** in `nlp_config.hpp`:
+```cpp
+struct SolverOptions {
+    int max_iter = 100;  // Change IPOPT iterations
+    double tol = 1e-6;   // Change convergence tolerance
+    // ... add more options
+};
+```
+
+</details>
 
 ## ⚙️ Configuration
 All MPC parameters are defined in `config.yaml`:

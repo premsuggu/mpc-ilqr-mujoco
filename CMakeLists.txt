@@ -38,20 +38,31 @@ include_directories(include)
 
 # Main executable only
 add_executable(humanoid_mpc
-    src/common/robot_utils.cpp
-    src/common/config.cpp
-    src/common/derivatives.cpp
+    src/ilqr/robot_utils.cpp
+    src/ilqr/config.cpp
+    src/ilqr/derivatives.cpp
     src/ilqr/ilqr.cpp
     src/ilqr/mpc.cpp
     main/humanoid_mpc.cpp
+)
+
+# NLP-based MPC executable (refactored with best practices)
+add_executable(nlp_mpc
+    src/nlp/nlp_utils.cpp
+    src/nlp/sym_utils.cpp
+    src/nlp/nlp_solver.cpp
+    src/nlp/mpc_utils.cpp
+    main/main_nlp.cpp
 )
 
 # Fix Pinocchio hidden symbol issue on Linux CI
 if(UNIX AND NOT APPLE)
     # Force default visibility for all symbols (fixes hidden symbol errors)
     target_compile_options(humanoid_mpc PRIVATE -fvisibility=default)
+    target_compile_options(nlp_mpc PRIVATE -fvisibility=default)
     # Force linker to include all dependencies
     target_link_options(humanoid_mpc PRIVATE -Wl,--no-as-needed)
+    target_link_options(nlp_mpc PRIVATE -Wl,--no-as-needed)
 endif()
 
 # Link libraries
@@ -72,11 +83,27 @@ target_link_libraries(humanoid_mpc
     ${GLFW_LIB_NAME}
 )
 
+target_link_libraries(nlp_mpc
+    mujoco
+    pinocchio_default
+    pinocchio_parsers
+    pinocchio_casadi
+    casadi
+    yaml-cpp
+    ${GLFW_LIB_NAME}
+)
+
 if(UNIX AND NOT APPLE)
     # Linux-specific system libs
     target_link_libraries(humanoid_mpc GL pthread dl)
+    target_link_libraries(nlp_mpc GL pthread dl)
     # Explicitly link Pinocchio transitive dependencies (fixes hidden symbol errors)
     target_link_libraries(humanoid_mpc 
+        urdfdom_model
+        urdfdom_world
+        console_bridge
+    )
+    target_link_libraries(nlp_mpc 
         urdfdom_model
         urdfdom_world
         console_bridge
@@ -84,11 +111,13 @@ if(UNIX AND NOT APPLE)
 elseif(WIN32)
     # Windows system libs typically required by OpenGL/GLFW
     target_link_libraries(humanoid_mpc opengl32 user32 gdi32 shell32)
+    target_link_libraries(nlp_mpc opengl32 user32 gdi32 shell32)
 endif()
 
 # Compiler flags for main executable only
 if(NOT MSVC)
     target_compile_options(humanoid_mpc PRIVATE -O3)
+    target_compile_options(nlp_mpc PRIVATE -O3)
 endif()
 
 # Optional profiling flag (OFF by default for zero overhead)

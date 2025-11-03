@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/robot_utils.hpp"
+#include "ilqr/robot_utils.hpp"
 #include "ilqr/ilqr.hpp"
 #include <vector>
 #include <fstream>

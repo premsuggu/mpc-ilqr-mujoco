@@ -1,4 +1,4 @@
-#include "common/robot_utils.hpp"
+#include "ilqr/robot_utils.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
