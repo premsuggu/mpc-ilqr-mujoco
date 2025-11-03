@@ -328,14 +328,21 @@ The NLP pipeline is organized into separate modules with clear responsibilities:
 # Activate conda environment
 conda activate humanoid-mpc
 
-# Build NLP executable (already built with main build)
+# Build NLP executable (already built with main build, but can rebuild separately)
 cd build
+
+# Linux/macOS:
 make nlp_mpc -j8
 
+# Windows (use cmake --build):
+cmake --build . --config Release --target nlp_mpc
+
 # Run NLP MPC
-./nlp_mpc  # Linux/macOS
-nlp_mpc.exe  # Windows
+./nlp_mpc           # Linux/macOS
+Release/nlp_mpc.exe # Windows
 ```
+
+**Note for Windows users**: The `make` command doesn't work with Visual Studio's MSBuild system. Always use `cmake --build` instead.
 
 ### **NLP Algorithm Details**
 

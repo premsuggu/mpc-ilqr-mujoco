@@ -64,16 +64,24 @@ jobs:
       run: |
         cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
         
-    - name: Build (All platforms - matching README)
+    - name: Build (All platforms)
       shell: bash -el {0}
       run: |
         cmake --build build --config Release --parallel 4
         
-    - name: Verify build output
+    - name: List executables (Unix)
+      if: matrix.os != 'windows-latest'
       shell: bash -el {0}
       run: |
-        cd build
-        ls -la
+        echo "=== Built executables (Unix) ==="
+        ls -lh build/humanoid_mpc build/nlp_mpc || true
+        
+    - name: List executables (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash -el {0}
+      run: |
+        echo "=== Built executables (Windows) ==="
+        ls -lh build/Release/humanoid_mpc.exe build/Release/nlp_mpc.exe || true
         
     - name: Test Python environment
       shell: bash -el {0}

@@ -2,7 +2,11 @@
 #include "nlp/sym_utils.hpp"
 #include <iostream>
 #include <chrono>
+
+// Platform-specific dynamic loading headers
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 namespace nlp {
 
@@ -228,7 +232,8 @@ void NLPSolver::setupSolver(const casadi::SX& cost, const casadi::SX& constraint
     opts["ipopt.warm_start_init_point"] = "yes";
     opts["ipopt.mu_init"] = config_.solver_options.mu_init;
     
-    // Try to use HSL if available
+    // Try to use HSL if available (Unix only - Windows doesn't support dlopen)
+#ifndef _WIN32
     if (config_.solver_options.use_hsl) {
         void* hsl_handle = dlopen("libcoinhsl.so", RTLD_LAZY);
         if (!hsl_handle) {
@@ -241,6 +246,12 @@ void NLPSolver::setupSolver(const casadi::SX& cost, const casadi::SX& constraint
             dlclose(hsl_handle);
         }
     }
+#else
+    // On Windows, skip HSL detection and use MUMPS (default in conda IPOPT)
+    if (config_.solver_options.use_hsl) {
+        std::cout << "[NLPSolver] HSL detection not supported on Windows, using MUMPS" << std::endl;
+    }
+#endif
     
     solver_ = casadi::nlpsol("nlp_solver", "ipopt", nlp, opts);
 }
