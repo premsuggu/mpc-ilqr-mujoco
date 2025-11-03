@@ -42,9 +42,9 @@ def convert_pinocchio_to_mujoco(pinocchio_state):
 
 def main():
     # Parse command line arguments
-    csv_path = "data/q_ref2_pin.csv"
-    output_path = "data/contact_walking.csv"
-    pinocchio_convention = True
+    csv_path = "data/q_T.csv"
+    output_path = "data/contact_T.csv"
+    pinocchio_convention = False
     save_mj_trajecotry = True
     
     # Simple argument parsing

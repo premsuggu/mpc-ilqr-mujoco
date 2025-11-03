@@ -2,7 +2,7 @@
 
 A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization.
 
-![Humanoid Standing Balance](results/stands.gif)
+![Humanoid Standing Balance](results/T_h1.gif)
 
 ## 🚀 Features
 
