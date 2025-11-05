@@ -9,15 +9,15 @@ robot:
     left_feet_ee: "left_ankle_link"
 
 reference_trajectory:
-  q_ref: "data/q_T.csv"
-  v_ref: "data/v_standing.csv"
-  contact_schedule: "data/contact_T.csv"
+  q_ref: "data/standing/q_T.csv"
+  v_ref: "data/standing/v_standing.csv"
+  contact_schedule: "data/standing/contact_T.csv"
 
 mpc:
   horizon: 25              # MPC prediction horizon (N)
   dt: 0.02                 # MPC timestep (50 Hz)
   physics_dt: 0.02         # Physics engine timestep
-  gravity: [0.0, 0.0, -4.0]  # World gravity [x, y, z]
+  gravity: [0.0, 0.0, -1.0]  # World gravity [x, y, z]
   sim_steps: 100            # Total simulation steps
   contact_impratio: 100.0  # Contact stiffness for stability
 

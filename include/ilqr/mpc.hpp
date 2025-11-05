@@ -26,6 +26,12 @@ public:
     void reset();
     void setTimeIndex(int t_idx) { t_idx_ = t_idx; }
     int getTimeIndex() const { return t_idx_; }
+    
+    /**
+     * @brief Set gravity magnitude for balance cost computation
+     * @param g Gravity magnitude (m/s^2)
+     */
+    void setGravity(double g) { ilqr_.setGravity(g); }
 
     // CSV logging (now always enabled once initialized)
     void enableCSVLogging(const std::string& filename); // kept for filename selection

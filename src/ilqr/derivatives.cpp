@@ -48,6 +48,9 @@ void symDerivatives::buildSymbolicFunctions() {
     ad_model_ = model_.template cast<ADScalar>();
     ad_data_ = pinocchio::DataTpl<ADScalar>(ad_model_);
     
+    // Initialize gravity with default value (will be overridden from config)
+    gravity_ = 9.81;
+    
     // Initialize CoM functions flag
     com_functions_built_ = false;
     com_vel_functions_built_ = false;
@@ -552,29 +555,75 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
                                        const ::casadi::SX& weight) {
     // Extract q and v from x_sym_
     typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> TangentVector;
     
     ConfigVector q_ad(model_.nq);
-    TangentVector v_ad(model_.nv);
     
     for (int i = 0; i < model_.nq; i++) {
         q_ad[i] = x_sym_(i);
     }
-    for (int i = 0; i < model_.nv; i++) {
-        v_ad[i] = x_sym_(model_.nq + i);
+    
+    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state
+    casadi::SX qx = x_sym_(3);
+    casadi::SX qy = x_sym_(4);
+    casadi::SX qz = x_sym_(5);
+    casadi::SX qw = x_sym_(6);
+    
+    // Build rotation matrix R_WB from quaternion (world to body)
+    casadi::SX qw2 = qw * qw;
+    casadi::SX qx2 = qx * qx;
+    casadi::SX qy2 = qy * qy;
+    casadi::SX qz2 = qz * qz;
+    
+    casadi::SX R_00 = qw2 + qx2 - qy2 - qz2;
+    casadi::SX R_01 = 2 * (qx * qy - qw * qz);
+    casadi::SX R_02 = 2 * (qx * qz + qw * qy);
+    casadi::SX R_10 = 2 * (qx * qy + qw * qz);
+    casadi::SX R_11 = qw2 - qx2 + qy2 - qz2;
+    casadi::SX R_12 = 2 * (qy * qz - qw * qx);
+    casadi::SX R_20 = 2 * (qx * qz - qw * qy);
+    casadi::SX R_21 = 2 * (qy * qz + qw * qx);
+    casadi::SX R_22 = qw2 - qx2 - qy2 + qz2;
+    
+    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
+    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
+    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
+    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
+    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
+    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
+    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
+    
+    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
+    casadi::SX v_lin_local_x = R_00*v_lin_world_x + R_10*v_lin_world_y + R_20*v_lin_world_z;
+    casadi::SX v_lin_local_y = R_01*v_lin_world_x + R_11*v_lin_world_y + R_21*v_lin_world_z;
+    casadi::SX v_lin_local_z = R_02*v_lin_world_x + R_12*v_lin_world_y + R_22*v_lin_world_z;
+    
+    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
+    std::vector<casadi::SX> v_pin_vec;
+    v_pin_vec.push_back(v_lin_local_x);
+    v_pin_vec.push_back(v_lin_local_y);
+    v_pin_vec.push_back(v_lin_local_z);
+    v_pin_vec.push_back(v_ang_local_x);
+    v_pin_vec.push_back(v_ang_local_y);
+    v_pin_vec.push_back(v_ang_local_z);
+    for (int i = 6; i < model_.nv; i++) {
+        v_pin_vec.push_back(x_sym_(model_.nq + i));
+    }
+    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
+    
+    // CRITICAL FIX: Call computeJointJacobians BEFORE jacobianCenterOfMass
+    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
+    pinocchio::jacobianCenterOfMass(ad_model_, ad_data_, q_ad);
+    
+    // Extract CoM Jacobian (3 x nv)
+    ::casadi::SX J_com = ::casadi::SX::zeros(3, model_.nv);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < model_.nv; j++) {
+            J_com(i, j) = ad_data_.Jcom(i, j);
+        }
     }
     
-    // Compute CoM velocity symbolically
-    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad, v_ad);
-    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, v_ad);
-    
-    // Build CoM velocity vector
-    std::vector<::casadi::SX> com_vel_components = {
-        ad_data_.vcom[0][0],  // vx
-        ad_data_.vcom[0][1],  // vy
-        ad_data_.vcom[0][2]   // vz
-    };
-    ::casadi::SX com_vel = ::casadi::SX::vertcat(com_vel_components);
+    // Compute CoM velocity: v_com = J_com * v_pin_local
+    ::casadi::SX com_vel = ::casadi::SX::mtimes(J_com, v_pin_local_sx);
     
     // Cost: weight * ||com_vel - target_com_vel||²
     ::casadi::SX error = com_vel - target_com_vel;
@@ -611,32 +660,76 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
 ::casadi::SX symDerivatives::symEEVel(const ::casadi::SX& target_vel,
                                       const ::casadi::SX& weight,
                                       pinocchio::FrameIndex frame_id) {
-    // Extract q and v from x_sym_
+    // Extract q from x_sym_
     typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq), v_ad(model_.nv);
+    ConfigVector q_ad(model_.nq);
     
     for (int i = 0; i < model_.nq; i++) {
         q_ad[i] = x_sym_(i);
     }
-    for (int i = 0; i < model_.nv; i++) {
-        v_ad[i] = x_sym_(model_.nq + i);
+    
+    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state (indices 3,4,5,6)
+    casadi::SX qx = x_sym_(3);
+    casadi::SX qy = x_sym_(4);
+    casadi::SX qz = x_sym_(5);
+    casadi::SX qw = x_sym_(6);
+    
+    // Build rotation matrix R_WB from quaternion (world to body)
+    casadi::SX R_00 = 1 - 2*qy*qy - 2*qz*qz;
+    casadi::SX R_01 = 2*qx*qy - 2*qw*qz;
+    casadi::SX R_02 = 2*qx*qz + 2*qw*qy;
+    casadi::SX R_10 = 2*qx*qy + 2*qw*qz;
+    casadi::SX R_11 = 1 - 2*qx*qx - 2*qz*qz;
+    casadi::SX R_12 = 2*qy*qz - 2*qw*qx;
+    casadi::SX R_20 = 2*qx*qz - 2*qw*qy;
+    casadi::SX R_21 = 2*qy*qz + 2*qw*qx;
+    casadi::SX R_22 = 1 - 2*qx*qx - 2*qy*qy;
+    
+    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
+    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
+    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
+    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
+    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
+    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
+    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
+    
+    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
+    casadi::SX v_lin_local_x = R_00*v_lin_world_x + R_10*v_lin_world_y + R_20*v_lin_world_z;
+    casadi::SX v_lin_local_y = R_01*v_lin_world_x + R_11*v_lin_world_y + R_21*v_lin_world_z;
+    casadi::SX v_lin_local_z = R_02*v_lin_world_x + R_12*v_lin_world_y + R_22*v_lin_world_z;
+    
+    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
+    std::vector<casadi::SX> v_pin_vec;
+    v_pin_vec.push_back(v_lin_local_x);
+    v_pin_vec.push_back(v_lin_local_y);
+    v_pin_vec.push_back(v_lin_local_z);
+    v_pin_vec.push_back(v_ang_local_x);
+    v_pin_vec.push_back(v_ang_local_y);
+    v_pin_vec.push_back(v_ang_local_z);
+    for (int i = 6; i < model_.nv; i++) {
+        v_pin_vec.push_back(x_sym_(model_.nq + i));
+    }
+    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
+    
+    // Compute joint Jacobians (required before frame Jacobian)
+    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
+    pinocchio::updateFramePlacements(ad_model_, ad_data_);
+    
+    // Get frame Jacobian (6 x nv, position part is first 3 rows)
+    auto J_frame = pinocchio::getFrameJacobian(
+        ad_model_, ad_data_, frame_id, pinocchio::LOCAL_WORLD_ALIGNED
+    );
+    
+    // Extract position Jacobian (3 x nv)
+    casadi::SX J_pos = casadi::SX::zeros(3, model_.nv);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < model_.nv; j++) {
+            J_pos(i, j) = J_frame(i, j);
+        }
     }
     
-    // Create local ad_data to avoid corrupting shared one
-    pinocchio::DataTpl<ADScalar> local_ad_data(ad_model_);
-    
-    // Compute kinematics with velocities
-    pinocchio::forwardKinematics(ad_model_, local_ad_data, q_ad, v_ad);
-    pinocchio::updateFramePlacements(ad_model_, local_ad_data);
-    
-    // Get end-effector velocity
-    auto frame_vel = pinocchio::getFrameVelocity(ad_model_, local_ad_data, frame_id, 
-                                                   pinocchio::LOCAL_WORLD_ALIGNED);
-    ::casadi::SX ee_vel = ::casadi::SX::vertcat({
-        frame_vel.linear()[0],
-        frame_vel.linear()[1],
-        frame_vel.linear()[2]
-    });
+    // Compute EE velocity: v_ee = J_pos * v_pin_local
+    casadi::SX ee_vel = casadi::SX::mtimes(J_pos, v_pin_local_sx);
     
     // Cost: weight * ||ee_vel - target_vel||²
     ::casadi::SX error = ee_vel - target_vel;
@@ -645,11 +738,11 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
 
 ::casadi::SX symDerivatives::symUpright(const ::casadi::SX& weight) {
     // Extract quaternion from x_sym_: [pos(3), quat(4), joints...]
-    // Quaternion indices: [3, 4, 5, 6] for [qw, qx, qy, qz]
-    casadi::SX qw = x_sym_(3);
-    casadi::SX qx = x_sym_(4);
-    casadi::SX qy = x_sym_(5);
-    casadi::SX qz = x_sym_(6);
+    // Quaternion indices: [3, 4, 5, 6] for [qx, qy, qz, qw] in Pinocchio format
+    casadi::SX qx = x_sym_(3);
+    casadi::SX qy = x_sym_(4);
+    casadi::SX qz = x_sym_(5);
+    casadi::SX qw = x_sym_(6);
     
     // Compute torso z-axis in world frame (3rd column of rotation matrix)
     casadi::SX z_torso_x = 2 * (qx * qz + qw * qy);
@@ -669,30 +762,91 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
                                         const ::casadi::SX& weight) {
     // Extract q and v from x_sym_
     typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq), v_ad(model_.nv);
+    ConfigVector q_ad(model_.nq);
     
     for (int i = 0; i < model_.nq; i++) {
         q_ad[i] = x_sym_(i);
     }
-    for (int i = 0; i < model_.nv; i++) {
-        v_ad[i] = x_sym_(model_.nq + i);
+    
+    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state
+    casadi::SX qx = x_sym_(3);
+    casadi::SX qy = x_sym_(4);
+    casadi::SX qz = x_sym_(5);
+    casadi::SX qw = x_sym_(6);
+    
+    // Build rotation matrix R_WB from quaternion (world to body)
+    casadi::SX qw2 = qw * qw;
+    casadi::SX qx2 = qx * qx;
+    casadi::SX qy2 = qy * qy;
+    casadi::SX qz2 = qz * qz;
+    
+    casadi::SX R_00 = qw2 + qx2 - qy2 - qz2;
+    casadi::SX R_01 = 2 * (qx * qy - qw * qz);
+    casadi::SX R_02 = 2 * (qx * qz + qw * qy);
+    casadi::SX R_10 = 2 * (qx * qy + qw * qz);
+    casadi::SX R_11 = qw2 - qx2 + qy2 - qz2;
+    casadi::SX R_12 = 2 * (qy * qz - qw * qx);
+    casadi::SX R_20 = 2 * (qx * qz - qw * qy);
+    casadi::SX R_21 = 2 * (qy * qz + qw * qx);
+    casadi::SX R_22 = qw2 - qx2 - qy2 + qz2;
+    
+    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
+    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
+    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
+    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
+    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
+    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
+    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
+    
+    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
+    casadi::SX v_lin_local_x = R_00 * v_lin_world_x + R_10 * v_lin_world_y + R_20 * v_lin_world_z;
+    casadi::SX v_lin_local_y = R_01 * v_lin_world_x + R_11 * v_lin_world_y + R_21 * v_lin_world_z;
+    casadi::SX v_lin_local_z = R_02 * v_lin_world_x + R_12 * v_lin_world_y + R_22 * v_lin_world_z;
+    
+    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
+    std::vector<casadi::SX> v_pin_vec;
+    v_pin_vec.push_back(v_lin_local_x);
+    v_pin_vec.push_back(v_lin_local_y);
+    v_pin_vec.push_back(v_lin_local_z);
+    v_pin_vec.push_back(v_ang_local_x);
+    v_pin_vec.push_back(v_ang_local_y);
+    v_pin_vec.push_back(v_ang_local_z);
+    for (int i = 6; i < model_.nv; i++) {
+        v_pin_vec.push_back(x_sym_(model_.nq + i));
     }
+    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
     
-    // Compute CoM position and velocity
-    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad, v_ad);
-    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, v_ad);
+    // Compute CoM position using forward kinematics
+    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
+    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, false);
     
-    // Extract CoM components
+    // Extract CoM position components
     casadi::SX pcom_x = ad_data_.com[0][0];
     casadi::SX pcom_y = ad_data_.com[0][1];
     casadi::SX pcom_z = ad_data_.com[0][2];
-    casadi::SX vcom_x = ad_data_.vcom[0][0];
-    casadi::SX vcom_y = ad_data_.vcom[0][1];
+    
+    // CRITICAL FIX: Call computeJointJacobians BEFORE jacobianCenterOfMass
+    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
+    pinocchio::jacobianCenterOfMass(ad_model_, ad_data_, q_ad);
+    
+    // Extract CoM Jacobian (3 x nv)
+    casadi::SX J_com = casadi::SX::zeros(3, model_.nv);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < model_.nv; j++) {
+            J_com(i, j) = ad_data_.Jcom(i, j);
+        }
+    }
+    
+    // Compute CoM velocity: v_com = J_com * v_pin_local
+    casadi::SX com_vel = casadi::SX::mtimes(J_com, v_pin_local_sx);
+    
+    // Extract velocity components
+    casadi::SX vcom_x = com_vel(0);
+    casadi::SX vcom_y = com_vel(1);
     
     // Capture point: p_cp = p_com_xy + v_com_xy * sqrt(h_com / g)
-    double g = 9.81;
     casadi::SX h_com = pcom_z;
-    casadi::SX omega_0 = casadi::SX::sqrt(h_com / g);
+    casadi::SX omega_0 = casadi::SX::sqrt(h_com / gravity_);
     
     std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
     std::vector<casadi::SX> v_com_xy = {vcom_x, vcom_y};

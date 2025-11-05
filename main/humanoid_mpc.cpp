@@ -6,6 +6,7 @@
 #include <chrono>
 #include <map>
 #include <vector>
+#include <cmath>
 
 #ifdef ENABLE_PROFILING
 #include <fstream>
@@ -66,6 +67,13 @@ int main() {
     RobotUtils robot;
     setupSimulation(robot, config);
     MPC mpc(robot, config.mpc.horizon, config.mpc.dt, config.urdf_path);
+    
+    // Set gravity magnitude for balance cost computation
+    double g_magnitude = std::sqrt(config.mpc.gravity[0] * config.mpc.gravity[0] + 
+                                   config.mpc.gravity[1] * config.mpc.gravity[1] + 
+                                   config.mpc.gravity[2] * config.mpc.gravity[2]);
+    mpc.setGravity(g_magnitude);
+    std::cout << "Gravity magnitude set to: " << g_magnitude << " m/s^2" << std::endl;
 
     #ifdef ENABLE_PROFILING
         double mem_initial = getCurrentMemoryMB();

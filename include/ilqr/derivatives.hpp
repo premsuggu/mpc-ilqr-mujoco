@@ -165,6 +165,17 @@ public:
      */
     int nq() const { return model_.nq; }
 
+    /**
+     * @brief Set gravity magnitude for balance cost computation
+     * @param g Gravity magnitude (m/s^2)
+     */
+    void setGravity(double g) { gravity_ = g; }
+
+    /**
+     * @brief Get current gravity magnitude
+     */
+    double getGravity() const { return gravity_; }
+
     // Make data accessible to validation functions
     pinocchio::Model model_;
     pinocchio::Data data_;
@@ -205,6 +216,9 @@ private:
     
     // State dimensions (cached for efficiency)
     int nx_;  // Full state size (nq + nv)
+    
+    // Gravity magnitude for balance cost (set from config)
+    double gravity_;
     
     // Build all symbolic functions once in constructor
     void buildSymbolicFunctions();

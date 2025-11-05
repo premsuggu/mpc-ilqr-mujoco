@@ -22,6 +22,12 @@ public:
     void setRegularization(double lambda);
     void setMaxIterations(int max_iter) { max_iterations_ = max_iter; }
     void setTolerance(double tol) { tolerance_ = tol; }
+    
+    /**
+     * @brief Set gravity magnitude for balance cost computation
+     * @param g Gravity magnitude (m/s^2)
+     */
+    void setGravity(double g) { derivatives_.setGravity(g); }
 
     // solve (multi-iteration iLQR)
     bool solve(const Eigen::VectorXd& x0,
