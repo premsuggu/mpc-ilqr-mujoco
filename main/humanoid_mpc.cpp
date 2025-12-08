@@ -2,6 +2,7 @@
 #include "ilqr/ilqr.hpp"
 #include "ilqr/mpc.hpp"
 #include "ilqr/config.hpp"
+#include "rerun/rerun_logger.hpp"
 #include <iostream>
 #include <chrono>
 #include <map>
@@ -53,7 +54,7 @@ double getCurrentMemoryMB() {
 // FUNCTION PROTOTYPES
 
 void setupSimulation(RobotUtils& robot, Config& config);
-void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config);
+void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config, RerunLogger* rerun_logger);
 #ifdef ENABLE_PROFILING
 void printProfilingResults();
 #endif
@@ -75,6 +76,19 @@ int main() {
     mpc.setGravity(g_magnitude);
     std::cout << "Gravity magnitude set to: " << g_magnitude << " m/s^2" << std::endl;
 
+    // Initialize Rerun visualization if enabled
+    RerunLogger* rerun_logger = nullptr;
+    if (config.enable_rerun) {
+        rerun_logger = new RerunLogger("H1_Humanoid_MPC");
+        if (rerun_logger->initialize()) {
+            std::cout << "[Rerun] Visualization initialized successfully" << std::endl;
+        } else {
+            std::cerr << "[Rerun] Failed to initialize, continuing without visualization" << std::endl;
+            delete rerun_logger;
+            rerun_logger = nullptr;
+        }
+    }
+
     #ifdef ENABLE_PROFILING
         double mem_initial = getCurrentMemoryMB();
         mem_peak = mem_initial; // Initialize peak memory
@@ -82,7 +96,12 @@ int main() {
         std::cout << "Initial memory: " << std::fixed << std::setprecision(2) << mem_initial << " MB" << std::endl;
     #endif
 
-    runSimulation(robot, mpc, config);
+    runSimulation(robot, mpc, config, rerun_logger);
+    
+    // Cleanup Rerun
+    if (rerun_logger) {
+        delete rerun_logger;
+    }
 
     #ifdef ENABLE_PROFILING
         double mem_final = getCurrentMemoryMB();
@@ -127,7 +146,7 @@ void setupSimulation(RobotUtils& robot, Config& config) {
 
  
 // SIMULATION LOOP FUNCTION
-void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config) {
+void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config, RerunLogger* rerun_logger) {
     if (config.save_trajectories) {
         mpc.enableOptimalTrajectoryLogging(config.results_path);
     }
@@ -142,6 +161,58 @@ void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config) {
         if (!x_current.allFinite()) {
             std::cerr << "NaN detected in state at step " << step << ", breaking." << std::endl;
             break;
+        }
+
+        // Log current state to Rerun
+        if (rerun_logger) {
+            double sim_time = step * config.mpc.dt;
+            rerun_logger->setTime(step, sim_time);
+            
+            // Get reference at current timestep (if available)
+            const Eigen::VectorXd* x_ref = nullptr;
+            const Eigen::Vector3d* com_ref = nullptr;
+            const Eigen::Vector3d* com_vel_ref = nullptr;
+            const std::vector<Eigen::Vector3d>* ee_pos_ref = nullptr;
+            
+            // Access reference data from robot (public members)
+            if (step < robot.x_ref_full_.size()) {
+                x_ref = &robot.x_ref_full_[step];
+            }
+            if (step < robot.com_ref_full_.size()) {
+                com_ref = &robot.com_ref_full_[step];
+            }
+            if (step < robot.com_vel_ref_full_.size()) {
+                com_vel_ref = &robot.com_vel_ref_full_[step];
+            }
+            if (step < robot.ee_pos_ref_full_.size()) {
+                ee_pos_ref = &robot.ee_pos_ref_full_[step];
+            }
+            
+            // Log base state (position & velocity)
+            rerun_logger->logBaseState(x_current, x_ref, robot.nq());
+            
+            // Log joints
+            Eigen::VectorXd q = x_current.head(robot.nq());
+            Eigen::VectorXd* q_ref_ptr = nullptr;
+            if (x_ref) {
+                static Eigen::VectorXd q_ref_temp;
+                q_ref_temp = x_ref->head(robot.nq());
+                q_ref_ptr = &q_ref_temp;
+            }
+            auto joint_lower = robot.getJointLowerLimits();
+            auto joint_upper = robot.getJointUpperLimits();
+            auto joint_names = robot.getJointNames();
+            rerun_logger->logJoints(q, joint_lower, joint_upper, joint_names, q_ref_ptr);
+            
+            // Log CoM
+            Eigen::Vector3d com_pos = robot.computeCoM(x_current);
+            Eigen::Vector3d com_vel = robot.computeCoMVelocity(x_current);
+            rerun_logger->logCoM(com_pos, com_vel, com_ref, com_vel_ref);
+            
+            // Log end effectors
+            auto ee_positions = robot.getEndEffectorPositions();
+            auto contact_states = robot.getContactStates(step);
+            rerun_logger->logEndEffectors(ee_positions, contact_states, ee_pos_ref);
         }
 
         Eigen::VectorXd u_apply(robot.nu());
@@ -170,6 +241,13 @@ void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config) {
         if (!u_apply.allFinite()) {
             std::cerr << "NaN in control at step " << step << ", using zero control." << std::endl;
             u_apply.setZero();
+        }
+
+        // Log torques to Rerun
+        if (rerun_logger) {
+            auto torque_limits = robot.getTorqueLimits();
+            auto joint_names = robot.getJointNames();
+            rerun_logger->logTorques(u_apply, torque_limits, joint_names);
         }
 
         robot.setControl(u_apply);

@@ -37,6 +37,8 @@ dependencies:
   # Visualization libraries (Python)
   - seaborn
   - plotly
+  - rerun-sdk        
+  - librerun-sdk
   
   # Development tools
   - ipython

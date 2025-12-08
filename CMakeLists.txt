@@ -36,6 +36,9 @@ endif()
 # Include directories
 include_directories(include)
 
+# Find Rerun SDK
+find_package(rerun_sdk REQUIRED CONFIG)
+
 # Main executable only
 add_executable(humanoid_mpc
     src/ilqr/robot_utils.cpp
@@ -43,6 +46,7 @@ add_executable(humanoid_mpc
     src/ilqr/derivatives.cpp
     src/ilqr/ilqr.cpp
     src/ilqr/mpc.cpp
+    src/rerun/rerun_logger.cpp
     main/humanoid_mpc.cpp
 )
 
@@ -81,6 +85,7 @@ target_link_libraries(humanoid_mpc
     casadi
     yaml-cpp
     ${GLFW_LIB_NAME}
+    rerun_sdk
 )
 
 target_link_libraries(nlp_mpc

@@ -39,6 +39,7 @@ struct Config {
     std::string results_path;
     bool verbose;
     bool save_trajectories;
+    bool enable_rerun;  // Enable Rerun visualization
     MpcParams mpc;
     
     // Pre-built cost matrices (constructed after loading robot dimensions)

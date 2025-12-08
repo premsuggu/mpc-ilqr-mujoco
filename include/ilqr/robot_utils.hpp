@@ -106,6 +106,15 @@ public:
     void setGravity(double gx = 0.0, double gy = 0.0, double gz = 0.0);
     void scaleRobotMass(double scale_factor);
     
+    // Public reference trajectories for Rerun visualization
+    std::vector<Eigen::VectorXd> x_ref_full_;
+    std::vector<Eigen::VectorXd> u_ref_full_;
+    std::vector<Eigen::Vector3d> com_ref_full_;
+    std::vector<Eigen::Vector3d> com_vel_ref_full_;
+    std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;
+    std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;
+    std::vector<std::vector<int>> contact_schedule_;
+    
 private:
     // MuJoCo model and data
     mjModel* model_;
@@ -127,17 +136,6 @@ private:
     // Constraint weights
     double w_joint_limits_;
     double w_control_limits_;
-
-    // Reference trajectories (full length)
-    std::vector<Eigen::VectorXd> x_ref_full_;
-    std::vector<Eigen::VectorXd> u_ref_full_;
-    std::vector<Eigen::Vector3d> com_ref_full_;
-    std::vector<Eigen::Vector3d> com_vel_ref_full_;  // CoM velocity references (separate)
-    std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;  // [time][ee_idx] = position
-    std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;  // [time][ee_idx] = velocity
-    
-    // Contact schedule: contact_schedule_[t][ee_idx] = 1 (stance) or 0 (swing)
-    std::vector<std::vector<int>> contact_schedule_;
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;
@@ -155,5 +153,14 @@ public:
     
     // CoM computation
     Eigen::Vector3d computeCoM(const Eigen::VectorXd& x) const;
+    
+    // Rerun visualization helpers
+    Eigen::VectorXd getJointLowerLimits() const;
+    Eigen::VectorXd getJointUpperLimits() const;
+    Eigen::VectorXd getTorqueLimits() const;
+    std::vector<std::string> getJointNames() const;
+    Eigen::Vector3d computeCoMVelocity(const Eigen::VectorXd& x) const;
+    std::vector<Eigen::Vector3d> getEndEffectorPositions() const;
+    std::vector<bool> getContactStates(int time_step) const;
 
 };

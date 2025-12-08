@@ -865,3 +865,172 @@ void RobotUtils::computeGravComp(Eigen::VectorXd& ugrav) const {
     }
 }
 
+// =========================================================================
+// Rerun Visualization Helper Functions
+// =========================================================================
+
+Eigen::VectorXd RobotUtils::getJointLowerLimits() const {
+    if (!model_) return Eigen::VectorXd();
+    
+    // Return limits for actual joints (skip base which is freejoint with 7 DOF)
+    int num_joints = model_->nq - 7;
+    Eigen::VectorXd limits(num_joints);
+    
+    for (int i = 0; i < num_joints; ++i) {
+        int qpos_idx = i + 7;  // Skip base (pos:3 + quat:4)
+        
+        // Find the joint that corresponds to this qpos index
+        int jnt_id = -1;
+        for (int j = 0; j < model_->njnt; ++j) {
+            if (model_->jnt_qposadr[j] == qpos_idx) {
+                jnt_id = j;
+                break;
+            }
+        }
+        
+        if (jnt_id >= 0) {
+            limits(i) = model_->jnt_range[jnt_id * 2];  // Lower limit
+        } else {
+            limits(i) = -M_PI;  // Default if not found
+        }
+    }
+    
+    return limits;
+}
+
+Eigen::VectorXd RobotUtils::getJointUpperLimits() const {
+    if (!model_) return Eigen::VectorXd();
+    
+    int num_joints = model_->nq - 7;
+    Eigen::VectorXd limits(num_joints);
+    
+    for (int i = 0; i < num_joints; ++i) {
+        int qpos_idx = i + 7;
+        
+        int jnt_id = -1;
+        for (int j = 0; j < model_->njnt; ++j) {
+            if (model_->jnt_qposadr[j] == qpos_idx) {
+                jnt_id = j;
+                break;
+            }
+        }
+        
+        if (jnt_id >= 0) {
+            limits(i) = model_->jnt_range[jnt_id * 2 + 1];  // Upper limit
+        } else {
+            limits(i) = M_PI;  // Default
+        }
+    }
+    
+    return limits;
+}
+
+Eigen::VectorXd RobotUtils::getTorqueLimits() const {
+    if (!model_) return Eigen::VectorXd();
+    
+    Eigen::VectorXd limits(nu_);
+    
+    for (int i = 0; i < nu_; ++i) {
+        // actuator_ctrlrange[i*2+1] is the upper control limit (absolute max torque)
+        limits(i) = model_->actuator_ctrlrange[i * 2 + 1];
+    }
+    
+    return limits;
+}
+
+std::vector<std::string> RobotUtils::getJointNames() const {
+    if (!model_) return std::vector<std::string>();
+    
+    std::vector<std::string> names;
+    names.reserve(nu_);
+    
+    for (int i = 0; i < nu_; ++i) {
+        // Get joint ID from actuator transmission
+        int joint_id = model_->actuator_trnid[i * 2];
+        
+        // Get joint name using MuJoCo API
+        const char* name_cstr = mj_id2name(model_, mjOBJ_JOINT, joint_id);
+        std::string name = name_cstr ? std::string(name_cstr) : ("joint_" + std::to_string(i));
+        
+        names.push_back(name);
+    }
+    
+    return names;
+}
+
+Eigen::Vector3d RobotUtils::computeCoMVelocity(const Eigen::VectorXd& x) const {
+    if (!model_ || !data_temp_) return Eigen::Vector3d::Zero();
+    
+    // Set state and compute kinematics
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_forward(model_, data_temp_);
+    
+    // Compute CoM velocity using mass-weighted average
+    double total_mass = 0.0;
+    Eigen::Vector3d com_vel = Eigen::Vector3d::Zero();
+    
+    for (int i = 1; i < model_->nbody; ++i) {
+        double body_mass = model_->body_mass[i];
+        if (body_mass > 0) {
+            total_mass += body_mass;
+            // cvel is body-centric velocity [angular(3), linear(3)]
+            for (int j = 0; j < 3; ++j) {
+                com_vel(j) += body_mass * data_temp_->cvel[i * 6 + 3 + j];
+            }
+        }
+    }
+    
+    return (total_mass > 0) ? com_vel / total_mass : com_vel;
+}
+
+std::vector<Eigen::Vector3d> RobotUtils::getEndEffectorPositions() const {
+    if (!model_ || !data_) return std::vector<Eigen::Vector3d>();
+    
+    std::vector<Eigen::Vector3d> positions;
+    positions.reserve(ee_site_ids_.size());
+    
+    for (int site_id : ee_site_ids_) {
+        Eigen::Vector3d pos;
+        pos.x() = data_->site_xpos[site_id * 3 + 0];
+        pos.y() = data_->site_xpos[site_id * 3 + 1];
+        pos.z() = data_->site_xpos[site_id * 3 + 2];
+        positions.push_back(pos);
+    }
+    
+    return positions;
+}
+
+std::vector<bool> RobotUtils::getContactStates(int time_step) const {
+    std::vector<bool> contacts(ee_site_ids_.size(), false);
+    
+    // If we have a contact schedule loaded, use it
+    if (!contact_schedule_.empty() && time_step >= 0 && time_step < contact_schedule_.size()) {
+        for (size_t i = 0; i < ee_site_ids_.size() && i < contact_schedule_[time_step].size(); ++i) {
+            contacts[i] = (contact_schedule_[time_step][i] == 1);
+        }
+    }
+    // Otherwise, detect from actual MuJoCo contacts
+    else if (data_) {
+        for (int c = 0; c < data_->ncon; ++c) {
+            int geom1 = data_->contact[c].geom1;
+            int geom2 = data_->contact[c].geom2;
+            
+            // Check if either geom is attached to an end-effector site
+            for (size_t i = 0; i < ee_site_ids_.size(); ++i) {
+                int body_id = model_->site_bodyid[ee_site_ids_[i]];
+                
+                // Check if contact involves this body
+                int body1 = model_->geom_bodyid[geom1];
+                int body2 = model_->geom_bodyid[geom2];
+                
+                if (body1 == body_id || body2 == body_id) {
+                    contacts[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+    
+    return contacts;
+}
+

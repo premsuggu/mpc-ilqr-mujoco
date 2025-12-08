@@ -15,6 +15,9 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.results_path = yaml_node["logging"]["results_path"].as<std::string>();
         config.verbose = yaml_node["logging"]["verbose"].as<bool>();
         config.save_trajectories = yaml_node["logging"]["save_trajectories"].as<bool>();
+        
+        // Load visualization parameters
+        config.enable_rerun = yaml_node["visualization"]["enable_rerun"].as<bool>(false);  // Default to false
 
         // Load MPC parameters
         auto mpc_node = yaml_node["mpc"];

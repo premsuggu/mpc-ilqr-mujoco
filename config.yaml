@@ -65,3 +65,6 @@ logging:
   verbose: true             # Print detailed progress
   save_trajectories: true   # Save optimal trajectories to file
   results_path: "results"   # Directory for trajectory logging
+
+visualization:
+  enable_rerun: true        # Enable Rerun real-time visualization (plots only)
