@@ -3,6 +3,12 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <cmath>
+
+// Define M_PI (for MSVC/Windows compatibility)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
