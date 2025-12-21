@@ -9,9 +9,9 @@ robot:
     left_feet_ee: "left_ankle_link"
 
 reference_trajectory:
-  q_ref: "data/standing/q_T.csv"
-  v_ref: "data/standing/v_standing.csv"
-  contact_schedule: "data/standing/contact_T.csv"
+  q_ref: "data/q_ref.csv"
+  v_ref: "data/v_ref.csv"
+  contact_schedule: "data/standing/contact_walking.csv"
 
 mpc:
   horizon: 25              # MPC prediction horizon (N)
