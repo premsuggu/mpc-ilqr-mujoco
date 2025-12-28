@@ -28,6 +28,10 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
     lxx_.resize(N_ + 1);
     luu_.resize(N_);
     lxu_.resize(N_);
+    
+    // Initialize expected reduction vector
+    dV_.setZero();
+    
     for (int t = 0; t <= N_; ++t) {
         xbar_[t] = Eigen::VectorXd::Zero(nx);
         lx_[t] = Eigen::VectorXd::Zero(nx);
@@ -248,6 +252,9 @@ void iLQR::setRegularization(double lambda) {
 }
 
 void iLQR::backwardPass() { 
+    // Reset expected reduction
+    dV_.setZero();
+    
     // V_N(x_N) = l_f(x_N), so ∇V_N = ∇l_f and ∇²V_N = ∇²l_f
     VxN_ = lx_[N_];   // Terminal cost gradient
     VxxN_ = lxx_[N_]; // Terminal cost Hessian
@@ -284,11 +291,16 @@ void iLQR::backwardPass() {
         K_[t] = -Quu.ldlt().solve(Qxu.transpose());  // K = -Quu^{-1} Qux
         kff_[t] = -Quu.ldlt().solve(Qu);             // k = -Quu^{-1} Qu
         
-        // Check for numerical issues
+        // Check for non-finite gains and throw exception
         if (!K_[t].allFinite() || !kff_[t].allFinite()) {
-            std::cout << "Warning: Non-finite gains at timestep " << t << std::endl;
-            // Continue with regularization instead of returning
+            std::cerr << "ERROR: Non-finite gains at timestep " << t << std::endl;
+            std::cerr << "  This indicates numerical instability (ill-conditioned Quu)" << std::endl;
+            throw std::runtime_error("Backward pass failed: non-finite gains at t=" + std::to_string(t));
         }
+        
+        // Compute expected cost reduction (for trust region ratio)
+        dV_(0) += kff_[t].dot(Qu);                     // Linear term
+        dV_(1) += 0.5 * kff_[t].dot(Quu * kff_[t]);    // Quadratic term
         
         // Value function update with safe evaluation (corrected formulas from iLQR.tex)
         Eigen::VectorXd KTQu = (K_[t].transpose() * Qu).eval();
@@ -617,7 +629,11 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
 #endif
             
             if (!improved) {
-                reg_lambda_ = std::min(reg_lambda_ * 10.0, 1e-3);
+                // Experiment 1: Lambda scaling - increased from 1e-3 to 100.0
+                reg_lambda_ = std::min(reg_lambda_ * 10.0, 100.0);
+                if (reg_lambda_ >= 100.0) {
+                    break;  // Maxed out regularization, give up
+                }
 #ifdef ENABLE_PROFILING
                 {
                     auto prof_start = std::chrono::steady_clock::now();
@@ -641,17 +657,43 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
                     if (iter > 1) break; // give up after a couple failed attempts
                     continue;
                 }
+            } else {
+                // SUCCESS: Ratio-based lambda adaptation (Trust Region)
+                double actual_red = previous_cost - new_cost;
+                double expected_red = -(dV_(0) + dV_(1));  // From backward pass
+                
+                // Only adapt if expected reduction is significant
+                if (std::abs(expected_red) > 1e-10) {
+                    double ratio = actual_red / expected_red;
+                    
+                    // Trust region: adapt lambda based on model quality
+                    if (ratio > 0.75) {
+                        // Model is GOOD → decrease regularization (faster Newton)
+                        reg_lambda_ = std::max(reg_lambda_ / 3.0, 1e-6);
+                    } else if (ratio < 0.25) {
+                        // Model is POOR → increase regularization (safer gradient)
+                        reg_lambda_ = std::min(reg_lambda_ * 10.0, 100.0);
+                    }
+                    // else: 0.25 <= ratio <= 0.75 → keep lambda unchanged
+                } else {
+                    // Fallback:  expected reduction too small, decrease lambda
+                    reg_lambda_ = std::max(reg_lambda_ / 2.0, 1e-6);
+                }
             }
             current_cost = new_cost;
-            reg_lambda_ = std::max(reg_lambda_ / 2.0, 1e-6);
         } catch (const std::exception& e) {
             std::cerr << "iLQR solve exception: " << e.what() << std::endl;
             break;
         }
 
-        // Convergence / divergence checks
+
+        // Experiment 4: Relative convergence (scale-independent)
         double delta = std::abs(current_cost - previous_cost);
-        if (delta < tolerance_) break;
+        double relative_delta = delta / std::max(1.0, std::abs(previous_cost));
+        
+        if (relative_delta < tolerance_ || delta < 1e-8) {
+            break;  // Converged
+        }
         if (current_cost > 1e6) break;
     }
 

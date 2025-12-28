@@ -9,16 +9,16 @@ robot:
     left_feet_ee: "left_ankle_link"
 
 reference_trajectory:
-  q_ref: "data/q_ref.csv"
-  v_ref: "data/v_ref.csv"
-  contact_schedule: "data/standing/contact_walking.csv"
+  q_ref: "data/standing/q_1foot.csv"
+  v_ref: "data/standing/v_standing.csv"
+  contact_schedule: "data/standing/contact_1foot.csv"
 
 mpc:
   horizon: 25              # MPC prediction horizon (N)
   dt: 0.02                 # MPC timestep (50 Hz)
   physics_dt: 0.02         # Physics engine timestep
-  gravity: [0.0, 0.0, -1.0]  # World gravity [x, y, z]
-  sim_steps: 100            # Total simulation steps
+  gravity: [0.0, 0.0, -0.05]  # World gravity [x, y, z]
+  sim_steps: 50            # Total simulation steps
   contact_impratio: 100.0  # Contact stiffness for stability
 
   cost_weights:
@@ -47,7 +47,7 @@ mpc:
     
     # Task-specific weights
     W_com_pos: 100.0            # Center of Mass tracking weight
-    W_com_vel: 0.0            # Center of Mass velocity tracking weight
+    W_com_vel: 0.0              # Center of Mass velocity tracking weight
     W_foot: 400.0               # End-effector position tracking weight
     W_foot_vel: 400.0           # End-effector velocity tracking weight
     W_upright: 20.0             # Upright posture penalty
@@ -67,4 +67,4 @@ logging:
   results_path: "results"   # Directory for trajectory logging
 
 visualization:
-  enable_rerun: true        # Enable Rerun real-time visualization (plots only)
+  enable_rerun: False        # Enable Rerun real-time visualization (plots only)

@@ -82,6 +82,9 @@ private:
     // Value function
     Eigen::VectorXd VxN_;     // Terminal gradient
     Eigen::MatrixXd VxxN_;    // Terminal Hessian
+    
+    // Expected cost reduction: dV_[0] = linear, dV_[1] = quadratic
+    Eigen::Vector2d dV_;
 
     // iLQR stages
     void forwardRolloutNominal();

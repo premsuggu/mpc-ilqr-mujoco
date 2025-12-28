@@ -59,15 +59,15 @@ public:
                         const Eigen::MatrixXd& Qf);
     void setCoMWeight(double w_com) { w_com_ = w_com; }
     double getCoMWeight() const { return w_com_; }
-    void setCoMVelWeight(double w_com_vel) { w_com_vel_ = w_com_vel; }
+    void setCoMVelWeight(double w) { w_com_vel_ = w; }
     double getCoMVelWeight() const { return w_com_vel_; }
     void setEEPosWeight(double w_ee) { w_ee_pos_ = w_ee; }
     double getEEPosWeight() const { return w_ee_pos_; }
     void setEEVelWeight(double w_ee_vel) { w_ee_vel_ = w_ee_vel; }
     double getEEVelWeight() const { return w_ee_vel_; }
     double getUprightWeight() const { return w_upright_; }
-    void setUprightWeight(double w_upright) { w_upright_ = w_upright;}
-    void setBalanceWeight(double w_balance) { w_balance_ = w_balance; }
+    void setUprightWeight(double w) { w_upright_ = w; }
+    void setBalanceWeight(double w) { w_balance_ = w; }
     double getBalanceWeight() const { return w_balance_; }
     
     // Constraint cost functions
@@ -136,6 +136,9 @@ private:
     // Constraint weights
     double w_joint_limits_;
     double w_control_limits_;
+    
+    // Experiment 2: Linearization parameters
+    double linearization_epsilon_;  // Finite difference step size
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;

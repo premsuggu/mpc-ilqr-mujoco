@@ -107,6 +107,7 @@ coverage.xml
 # Test files
 sim.py
 *test*
+*experiment*
 
 # Documents files
 docs/
@@ -115,3 +116,4 @@ docs/
 *backup*
 analysis/
 *examples*
+others/
