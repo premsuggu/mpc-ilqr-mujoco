@@ -1,3 +1,4 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/premsuggu/mpc-ilqr-mujoco)
 # Humanoid Model Predictive Control (MPC) with iLQR
 
 A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization.
