@@ -40,6 +40,11 @@ struct Config {
     bool verbose;
     bool save_trajectories;
     bool enable_rerun;  // Enable Rerun visualization
+    
+    // End-effector body names (loaded from config.yaml)
+    std::string left_foot_body_name;
+    std::string right_foot_body_name;
+    
     MpcParams mpc;
     
     // Pre-built cost matrices (constructed after loading robot dimensions)

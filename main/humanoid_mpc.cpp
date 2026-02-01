@@ -119,13 +119,14 @@ int main() {
  
 // SETUP FUNCTION
 void setupSimulation(RobotUtils& robot, Config& config) {
-    if (!robot.loadModel(config.model_path)) {
+    if (!robot.loadModel(config.model_path, 
+                         config.left_foot_body_name, 
+                         config.right_foot_body_name)) {
         throw std::runtime_error("Failed to load robot model from: " + config.model_path);
     }
     robot.setContactImpratio(config.mpc.contact_impratio);
     robot.setTimeStep(config.mpc.physics_dt);
     robot.setGravity(config.mpc.gravity[0], config.mpc.gravity[1], config.mpc.gravity[2]);
-    robot.initializeStandingPose();
     std::cout << "Model loaded: nx=" << robot.nx() << ", nu=" << robot.nu() << std::endl;
     config.buildCostMatrices(robot.nx(), robot.nu(), robot.nq());
     robot.setCostWeights(config.Q, config.R, config.Qf);
@@ -138,6 +139,15 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);
     if (!robot.loadReferences(config.q_ref_path, config.v_ref_path)) {
         throw std::runtime_error("Failed to load reference trajectories.");
+    }
+    // Initialize robot state from first reference state (correct height for each model)
+    if (!robot.x_ref_full_.empty()) {
+        robot.setState(robot.x_ref_full_[0]);
+        std::cout << "Initialized robot state from reference (Z = " 
+                  << robot.x_ref_full_[0](2) << " m)" << std::endl;
+    } else {
+        std::cerr << "WARNING: No reference trajectory loaded, using default pose" << std::endl;
+        robot.initializeStandingPose();
     }
     if (!robot.loadContactSchedule(config.contact_schedule_path)) {
         std::cerr << "Warning: Failed to load contact schedule, continuing without it." << std::endl;

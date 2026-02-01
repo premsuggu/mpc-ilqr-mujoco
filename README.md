@@ -11,9 +11,9 @@ A cross-platform implementation of Model Predictive Control for humanoid robots 
 - **iLQR Optimization**: Efficient iterative Linear Quadratic Regulator solver with warm-start capability
 - **Symbolic Differentiation**: Fast analytical derivatives using Pinocchio + CasADi
 - **MuJoCo Integration**: Physics simulation with contact modeling
-- **Cross-platform**: Should work on Linux, macOS, and Windows
-- **H1 Humanoid Robot**: Pre-configured for Unitree H1 robot model (51-state, 19-control)
-- **Configuration-Driven**: All parameters loaded from `config.yaml`
+- **Cross-platform**: Works on Linux, macOS, and Windows
+- **Multi-Robot Support**: Model-agnostic design supporting multiple humanoid models (H1, DeepMind Humanoid, etc.)
+- **Configuration-Driven**: All parameters and robot-specific settings loaded from `config.yaml`
 - **Performance Profiling**: Optional compile-time profiling with zero overhead when disabled
 - **Visualization Tools**: Python scripts for trajectory analysis and 3D MuJoCo viewer
 
@@ -519,14 +519,26 @@ void iLQR::addCustomCost(int t, const Eigen::VectorXd& x_ref) {
 
 ### **Changing Robot Model**
 
-1. Add your robot URDF to `robots/your_robot/`
-2. Update `config.yaml`:
+The system is **model-agnostic**. To add a new robot:
+
+1. **Add your robot files** to `robots/your_robot/`
+2. **Update `config.yaml`**:
    ```yaml
    robot:
+     name: your_robot
      model_path: "robots/your_robot/model.xml"
      urdf_path: "robots/your_robot/robot.urdf"
+     ee_feet:
+       left_feet_ee: "left_foot_body_name"   # Body name in your MJCF/URDF
+       right_feet_ee: "right_foot_body_name"  # Body name in your MJCF/URDF
    ```
-3. Adjust cost weights for your robot's dimensions
+3. **Generate reference trajectories** (q_ref.csv, v_ref.csv, contact_schedule.csv)
+4. **Adjust cost weights** for your robot's dimensions (optional)
+
+**Supported Models**:
+- ✅ Unitree H1 (bodies: `left_ankle_link`, `right_ankle_link`)
+- ✅ DeepMind Humanoid (bodies: `foot_left`, `foot_right`)
+- ✅ Any humanoid with MuJoCo MJCF/URDF format
 
 ### **Running Tests**
 
@@ -570,11 +582,85 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **[MuJoCo](https://mujoco.org/)** - Physics simulation framework
-- **[Pinocchio](https://github.com/stack-of-tasks/pinocchio)** - Fast rigid body dynamics
-- **[CasADi](https://web.casadi.org/)** - Symbolic differentiation
-- **[Eigen](https://eigen.tuxfamily.org/)** - Linear algebra library
-- **[Unitree Robotics](https://www.unitree.com/)** - H1 humanoid robot model
+This work was inspired by and references concepts from **Google DeepMind's [MuJoCo MPC (MJPC)](https://github.com/google-deepmind/mujoco_mpc)**, a general-purpose predictive control framework. While our implementation takes a different approach (specialized iLQR for humanoids with analytical derivatives), we acknowledge MJPC as a valuable reference for MPC design patterns and contact modeling strategies.
+
+### Core Dependencies
+
+- **[MuJoCo](https://mujoco.org/)** ([Todorov et al., 2012](https://ieeexplore.ieee.org/document/6386109)) - Advanced physics simulation engine
+  ```
+  @inproceedings{todorov2012mujoco,
+    title={MuJoCo: A physics engine for model-based control},
+    author={Todorov, Emanuel and Erez, Tom and Tassa, Yuval},
+    booktitle={2012 IEEE/RSJ International Conference on Intelligent Robots and Systems},
+    pages={5026--5033},
+    year={2012},
+    organization={IEEE}
+  }
+  ```
+
+- **[Pinocchio](https://github.com/stack-of-tasks/pinocchio)** ([Carpentier et al., 2019](https://hal.science/hal-01866228)) - Rigid body dynamics library
+  ```
+  @inproceedings{carpentier2019pinocchio,
+    title={The Pinocchio C++ library: A fast and flexible implementation of rigid body dynamics algorithms and their analytical derivatives},
+    author={Carpentier, Justin and Saurel, Guilhem and Buondonno, Gabriele and Mirabel, Joseph and Lamiraux, Florent and Stasse, Olivier and Mansard, Nicolas},
+    booktitle={2019 IEEE/SICE International Symposium on System Integration (SII)},
+    pages={614--619},
+    year={2019},
+    organization={IEEE}
+  }
+  ```
+
+- **[CasADi](https://web.casadi.org/)** ([Andersson et al., 2019](https://link.springer.com/article/10.1007/s12532-018-0139-4)) - Symbolic framework for automatic differentiation
+  ```
+  @article{andersson2019casadi,
+    title={CasADi: a software framework for nonlinear optimization and optimal control},
+    author={Andersson, Joel AE and Gillis, Joris and Horn, Greg and Rawlings, James B and Diehl, Moritz},
+    journal={Mathematical Programming Computation},
+    volume={11},
+    number={1},
+    pages={1--36},
+    year={2019},
+    publisher={Springer}
+  }
+  ```
+
+- **[Eigen](https://eigen.tuxfamily.org/)** - High-performance C++ linear algebra library
+
+### Robot Models
+
+- **[Unitree H1](https://www.unitree.com/)** - Humanoid robot platform
+- **[DeepMind Humanoid](https://github.com/google-deepmind/dm_control)** - Simulated humanoid from DM Control Suite
+  ```
+  @article{tunyasuvunakool2020dm_control,
+    title={dm\_control: Software and tasks for continuous control},
+    author={Tunyasuvunakool, Saran and Muldal, Alistair and Doron, Yotam and Liu, Siqi and Bohez, Steven and Merel, Josh and Erez, Tom and Lillicrap, Timothy and Heess, Nicolas and Tassa, Yuval},
+    journal={Software Impacts},
+    volume={6},
+    pages={100022},
+    year={2020},
+    publisher={Elsevier}
+  }
+  ```
+
+### Algorithmic References
+
+- **iLQR Algorithm**: [Li & Todorov, 2004](https://ieeexplore.ieee.org/document/1389084)
+  ```
+  @inproceedings{li2004iterative,
+    title={Iterative linear quadratic regulator design for nonlinear biological movement systems},
+    author={Li, Weiwei and Todorov, Emanuel},
+    booktitle={First International Conference on Informatics in Control, Automation and Robotics},
+    pages={222--229},
+    year={2004}
+  }
+  ```
+
+- **Differential Dynamic Programming (DDP)**: [Mayne, 1966](https://www.sciencedirect.com/science/article/pii/S1474667017699666); [Jacobson & Mayne, 1970](https://www.sciencedirect.com/science/article/pii/B9780123724403500038)
+
+### Additional Tools
+
+- **yaml-cpp** - YAML configuration parser
+- **GLFW** - OpenGL windowing and input library
 
 ## 📧 Contact
 

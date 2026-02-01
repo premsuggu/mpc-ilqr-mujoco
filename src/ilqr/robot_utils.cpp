@@ -23,7 +23,9 @@ RobotUtils::~RobotUtils() {
     if (model_) mj_deleteModel(model_);
 }
 
-bool RobotUtils::loadModel(const std::string& xml_path) {
+bool RobotUtils::loadModel(const std::string& xml_path,
+                            const std::string& left_foot_name,
+                            const std::string& right_foot_name) {
     char error[1024] = {0};
     // Load the MuJoCo model from XML
     model_ = mj_loadXML(xml_path.c_str(), nullptr, error, sizeof(error));
@@ -46,13 +48,33 @@ bool RobotUtils::loadModel(const std::string& xml_path) {
     // Build a map from joint names to IDs
     buildJointNameMap();
     
-    // Initialize end-effector body IDs (using ankle links as foot end-effectors)
+    // Initialize end-effector body IDs using configured names
     ee_site_ids_.clear();
-    int left_ankle_id = mj_name2id(model_, mjOBJ_BODY, "left_ankle_link");
-    int right_ankle_id = mj_name2id(model_, mjOBJ_BODY, "right_ankle_link");
-    if (left_ankle_id >= 0) ee_site_ids_.push_back(left_ankle_id);
-    if (right_ankle_id >= 0) ee_site_ids_.push_back(right_ankle_id);
+    int left_foot_id = mj_name2id(model_, mjOBJ_BODY, left_foot_name.c_str());
+    int right_foot_id = mj_name2id(model_, mjOBJ_BODY, right_foot_name.c_str());
+    
+    // Validation: Warn if bodies not found
+    if (left_foot_id < 0) {
+        std::cerr << "WARNING: Left foot body '" << left_foot_name << "' not found in model!" << std::endl;
+    } else {
+        ee_site_ids_.push_back(left_foot_id);
+        std::cout << "  Left foot: '" << left_foot_name << "' (body ID " << left_foot_id << ")" << std::endl;
+    }
+    
+    if (right_foot_id < 0) {
+        std::cerr << "WARNING: Right foot body '" << right_foot_name << "' not found in model!" << std::endl;
+    } else {
+        ee_site_ids_.push_back(right_foot_id);
+        std::cout << "  Right foot: '" << right_foot_name << "' (body ID " << right_foot_id << ")" << std::endl;
+    }
+    
     std::cout << "Found " << ee_site_ids_.size() << " end-effector bodies" << std::endl;
+    
+    // CRITICAL: Fail if no end-effectors found
+    if (ee_site_ids_.empty()) {
+        std::cerr << "ERROR: No end-effector bodies found! Check config.yaml ee_feet names." << std::endl;
+        return false;
+    }
     
     // Set up default cost matrices
     Q_ = Eigen::MatrixXd::Identity(nx_, nx_);

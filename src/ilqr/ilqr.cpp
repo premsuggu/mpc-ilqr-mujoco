@@ -669,7 +669,7 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
                     // Trust region: adapt lambda based on model quality
                     if (ratio > 0.75) {
                         // Model is GOOD → decrease regularization (faster Newton)
-                        reg_lambda_ = std::max(reg_lambda_ / 3.0, 1e-6);
+                        reg_lambda_ = std::max(reg_lambda_ / 10.0, 1e-6);
                     } else if (ratio < 0.25) {
                         // Model is POOR → increase regularization (safer gradient)
                         reg_lambda_ = std::min(reg_lambda_ * 10.0, 100.0);

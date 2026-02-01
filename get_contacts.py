@@ -69,7 +69,7 @@ def main():
                 print("  Convention: MuJoCo (use --pinocchio-convention if input is in Pinocchio format)")
                 return
     
-    model_path = "./robots/h1_description/mjcf/scene.xml"
+    model_path = "robots/dm_humanoid/humanoid.xml"
     
     # Load model and data
     model = mujoco.MjModel.from_xml_path(model_path)

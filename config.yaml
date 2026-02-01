@@ -1,70 +1,68 @@
-# config.yaml - MPC Configuration File
-
 robot:
-  name: h1
-  model_path: "robots/h1_description/mjcf/scene.xml"
-  urdf_path: "robots/h1_description/urdf/h1.urdf"
-  ee_feet: 
-    right_feet_ee: "right_ankle_link"
-    left_feet_ee: "left_ankle_link"
+  name: dm_humanoid
+  model_path: "robots/dm_humanoid/humanoid.xml"
+  urdf_path: "robots/dm_humanoid/humanoid.xml"
+  ee_feet:
+    right_feet_ee: "foot_right"
+    left_feet_ee: "foot_left"
 
 reference_trajectory:
-  q_ref: "data/standing/q_1foot.csv"
-  v_ref: "data/standing/v_standing.csv"
-  contact_schedule: "data/standing/contact_1foot.csv"
+  q_ref: "data/dm_humanoid/q_standing.csv"
+  v_ref: "data/dm_humanoid/v_standing.csv"
+  contact_schedule: "data/dm_humanoid/contact_standing.csv"
 
 mpc:
-  horizon: 25              # MPC prediction horizon (N)
-  dt: 0.02                 # MPC timestep (50 Hz)
-  physics_dt: 0.02         # Physics engine timestep
-  gravity: [0.0, 0.0, -0.05]  # World gravity [x, y, z]
+  horizon: 23              # MJPC: 0.35s / 0.015s = 23 steps
+  dt: 0.02                # MJPC timestep (15ms)
+  physics_dt: 0.02        # MuJoCo substep (keep fine for stability)
+  gravity: [0.0, 0.0, -1.0]  # Standard gravity (MJPC uses full gravity)
   sim_steps: 50            # Total simulation steps
-  contact_impratio: 100.0  # Contact stiffness for stability
+  contact_impratio: 100.0  # Contact stiffness
 
   cost_weights:
-    # State deviation weights (Q matrix)
-    Q_position_x: 200.0      # X,Y position weight
-    Q_position_y: 50.0       # Y position weight
-    Q_position_z: 200.0      # Z position weight (critical)
-    Q_quat_w: 50.0           # Quaternion real part
-    Q_quat_xyz: [50.0, 50.0, 50.0]  # [qx, qy, qz] - roll, pitch, yaw
-    Q_joint_pos: 50.0        # Joint position tracking
-    Q_vel_x: 150.0           # X velocity damping
-    Q_vel_y: 50.0            # Y velocity damping
-    Q_vel_z: 150.0           # Z velocity damping (critical)
-    Q_ang_vel: 75.0          # Angular velocity damping
-    Q_joint_vel: 75.0        # Joint velocity damping
+    # State deviation weights (Q matrix) - MJPC-inspired
+    Q_position_x: 5.0        # Reduced from 200.0
+    Q_position_y: 5.0        # Reduced from 50.0
+    Q_position_z: 5.0        # MJPC "Height" = 5.0 (was 200.0 - 40x reduction!)
+    Q_quat_w: 5.0            # MJPC "Upright" = 5.0 (was 50.0)
+    Q_quat_xyz: [5.0, 5.0, 5.0]  # Match upright weight (was [50, 50, 50])
+    Q_joint_pos: 0.025       # MJPC "Posture" = 0.025 (was 50.0 - 2000x reduction!)
+    Q_vel_x: 10.0            # Keep moderate damping
+    Q_vel_y: 10.0            # Keep moderate damping
+    Q_vel_z: 10.0            # Reduced from 150.0
+    Q_ang_vel: 10.0          # Reduced from 75.0
+    Q_joint_vel: 10.0        # Reduced from 75.0
     
     # Control effort weight (R matrix)
-    R_control: 0.001           # Control effort penalty
+    R_control: 0.1           # MJPC "Control" = 0.1 (was 0.01 - 10x increase)
     
     # Terminal cost multiplier (Qf = Q * Qf_multiplier)
-    Qf_multiplier: 2.0        # Terminal cost base multiplier
-    Qf_position_x: 5.0        # Additional multiplier for terminal X
-    Qf_position_y: 2.0        # Additional multiplier for terminal Y
-    Qf_position_z: 5.0        # Additional multiplier for terminal Z
-    Qf_vel_z: 4.0             # Additional multiplier for terminal Z velocity
+    Qf_multiplier: 2.0       # Keep same
+    Qf_position_x: 2.0       # Reduced from 5.0
+    Qf_position_y: 2.0       # Keep same
+    Qf_position_z: 2.0       # Reduced from 5.0
+    Qf_vel_z: 2.0            # Reduced from 4.0
     
-    # Task-specific weights
-    W_com_pos: 100.0            # Center of Mass tracking weight
-    W_com_vel: 0.0              # Center of Mass velocity tracking weight
-    W_foot: 400.0               # End-effector position tracking weight
-    W_foot_vel: 400.0           # End-effector velocity tracking weight
-    W_upright: 20.0             # Upright posture penalty
-    w_balance: 30.0             # Balance maintenance weight (capture point)
+    # Task-specific weights - MJPC-inspired
+    W_com_pos: 5.0           # MJPC "Balance" = 5.0 (was 100.0 - 20x reduction!)
+    W_com_vel: 0.0           # Keep disabled
+    W_foot: 1.0              # MJPC "Pelvis/Feet" = 1.0 (was 400.0 - 400x reduction!)
+    W_foot_vel: 1.0          # Match foot position (was 400.0 - 400x reduction!)
+    W_upright: 5.0           # MJPC "Upright" = 5.0 (was 20.0 - 4x reduction)
+    w_balance: 5.0           # MJPC "Balance" = 5.0 (was 30.0 - 6x reduction)
 
   constraints:
-    joint_limit_weight: 1500.0    # Joint limit soft constraint penalty
-    torque_limit_weight: 1500.0   # Torque limit soft constraint penalty
+    joint_limit_weight: 1500.0    # Keep same (safety)
+    torque_limit_weight: 1500.0   # Keep same (safety)
 
 paths:
-  logs_dir: "logs"          # Directory for log files
-  results_dir: "results"    # Directory for result files
+  logs_dir: "logs"
+  results_dir: "results"
 
 logging:
-  verbose: true             # Print detailed progress
-  save_trajectories: true   # Save optimal trajectories to file
-  results_path: "results"   # Directory for trajectory logging
+  verbose: true
+  save_trajectories: true
+  results_path: "results"
 
 visualization:
-  enable_rerun: False        # Enable Rerun real-time visualization (plots only)
+  enable_rerun: False

@@ -21,7 +21,9 @@ public:
     ~RobotUtils();
 
     // Model loading and configuration
-    bool loadModel(const std::string& xml_path);
+    bool loadModel(const std::string& xml_path,
+                   const std::string& left_foot_name = "left_ankle_link",
+                   const std::string& right_foot_name = "right_ankle_link");
     void setContactImpratio(double impratio);
     void setTimeStep(double dt);
 

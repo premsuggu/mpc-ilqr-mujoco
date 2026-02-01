@@ -9,6 +9,20 @@ Config loadConfigFromFile(const std::string& filepath) {
         // Load top-level and robot parameters
         config.model_path = yaml_node["robot"]["model_path"].as<std::string>();
         config.urdf_path = yaml_node["robot"]["urdf_path"].as<std::string>();
+        
+        // Load end-effector body names
+        if (!yaml_node["robot"]["ee_feet"]) {
+            std::cerr << "ERROR: config.yaml missing 'robot.ee_feet' section!" << std::endl;
+            std::cerr << "Required format:" << std::endl;
+            std::cerr << "  ee_feet:" << std::endl;
+            std::cerr << "    left_feet_ee: \"foot_left\"" << std::endl;
+            std::cerr << "    right_feet_ee: \"foot_right\"" << std::endl;
+            exit(1);
+        }
+        auto ee_feet_node = yaml_node["robot"]["ee_feet"];
+        config.left_foot_body_name = ee_feet_node["left_feet_ee"].as<std::string>();
+        config.right_foot_body_name = ee_feet_node["right_feet_ee"].as<std::string>();
+        
         config.q_ref_path = yaml_node["reference_trajectory"]["q_ref"].as<std::string>();
         config.v_ref_path = yaml_node["reference_trajectory"]["v_ref"].as<std::string>();
         config.contact_schedule_path = yaml_node["reference_trajectory"]["contact_schedule"].as<std::string>();

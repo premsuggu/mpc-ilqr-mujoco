@@ -78,7 +78,7 @@ def main():
     # Add some standing poses at the beginning for better visualization
     print("Adding standing poses at beginning...")
     standing_pose = np.zeros((5, model.nq))
-    standing_pose[:, 2] = 1.0432         # Z (base/pelvis height) for h1
+    standing_pose[:, 2] = 1.2820         # Z (base/pelvis height) for h1
     standing_pose[:, 3] = 1.0            # quaternion w
     
     # Combine standing + MPC trajectory

@@ -1,5 +1,6 @@
 #include "ilqr/derivatives.hpp"
 #include <pinocchio/parsers/urdf.hpp>
+#include <pinocchio/parsers/mjcf.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/center-of-mass.hpp>
@@ -23,16 +24,27 @@ Eigen::VectorXd convertMuJoCoToPinocchio(const Eigen::VectorXd& mujoco_state, in
     return pinocchio_state;
 }
 
-symDerivatives::symDerivatives(const std::string& urdf_path, bool floating_base) {
-    // Load Pinocchio model
-    if (floating_base) {
-        pinocchio::urdf::buildModel(urdf_path, pinocchio::JointModelFreeFlyer(), model_);
+symDerivatives::symDerivatives(const std::string& model_path, bool floating_base) {
+    // Detect file type by extension
+    bool is_mjcf = (model_path.size() >= 4 && 
+                    model_path.substr(model_path.size() - 4) == ".xml");
+    
+    if (is_mjcf) {
+        // Load MJCF (MuJoCo XML) - freejoint in XML automatically creates floating base
+        pinocchio::mjcf::buildModel(model_path, model_);
+        std::cout << "Loaded robot from MJCF: " << model_path << std::endl;
     } else {
-        pinocchio::urdf::buildModel(urdf_path, model_);
+        // Load URDF
+        if (floating_base) {
+            pinocchio::urdf::buildModel(model_path, pinocchio::JointModelFreeFlyer(), model_);
+        } else {
+            pinocchio::urdf::buildModel(model_path, model_);
+        }
+        std::cout << "Loaded robot from URDF: " << model_path << std::endl;
     }
     data_ = pinocchio::Data(model_);
     
-    std::cout << "Loaded robot: " << model_.nq << " DOF" << std::endl;
+    std::cout << "Robot: nq=" << model_.nq << ", nv=" << model_.nv << std::endl;
     
     // Build symbolic computation framework once
     buildSymbolicFunctions();
