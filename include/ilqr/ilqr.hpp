@@ -37,6 +37,15 @@ public:
      * @param norm_params Map of cost term names to their norm configurations
      */
     void setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params);
+    
+    /**
+     * @brief Configure iLQR solver settings
+     */
+    void configureSolver(double reg_min, double reg_max, double reg_increase_factor,
+                        double reg_decrease_factor, double trust_region_good,
+                        double trust_region_poor, const std::vector<double>& line_search_alphas,
+                        double line_search_tolerance, double quu_regularization,
+                        double convergence_threshold);
 
     // solve (multi-iteration iLQR)
     bool solve(const Eigen::VectorXd& x0,
@@ -69,6 +78,18 @@ private:
     double reg_lambda_;
     int max_iterations_;
     double tolerance_;
+    
+    // Solver settings (configurable)
+    double reg_min_;
+    double reg_max_;
+    double reg_increase_factor_;
+    double reg_decrease_factor_;
+    double trust_region_good_;
+    double trust_region_poor_;
+    std::vector<double> line_search_alphas_;
+    double line_search_tolerance_;
+    double quu_regularization_;
+    double convergence_threshold_;
 
     // Nominal trajectories
     std::vector<Eigen::VectorXd> xbar_, ubar_;

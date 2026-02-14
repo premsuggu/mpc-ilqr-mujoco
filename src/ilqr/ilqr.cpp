@@ -13,7 +13,11 @@ extern std::map<std::string, ProfileData> prof_data;
 
 iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path) 
         : robot_(robot), derivatives_(urdf_path, true),
-          N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4) {
+          N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4),
+          reg_min_(1e-6), reg_max_(100.0), reg_increase_factor_(10.0), reg_decrease_factor_(10.0),
+          trust_region_good_(0.75), trust_region_poor_(0.25),
+          line_search_alphas_({1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01}),
+          line_search_tolerance_(1e-6), quu_regularization_(1e-4), convergence_threshold_(1e-8) {
     // Set up all the storage for trajectories, gains, and derivatives
     int nx = robot_.nx();
     int nu = robot_.nu();
@@ -255,6 +259,23 @@ void iLQR::setNormParams(const std::map<std::string, ilqr::NormParams>& norm_par
     derivatives_.setNormParams(norm_params);
 }
 
+void iLQR::configureSolver(double reg_min, double reg_max, double reg_increase_factor,
+                          double reg_decrease_factor, double trust_region_good,
+                          double trust_region_poor, const std::vector<double>& line_search_alphas,
+                          double line_search_tolerance, double quu_regularization,
+                          double convergence_threshold) {
+    reg_min_ = reg_min;
+    reg_max_ = reg_max;
+    reg_increase_factor_ = reg_increase_factor;
+    reg_decrease_factor_ = reg_decrease_factor;
+    trust_region_good_ = trust_region_good;
+    trust_region_poor_ = trust_region_poor;
+    line_search_alphas_ = line_search_alphas;
+    line_search_tolerance_ = line_search_tolerance;
+    quu_regularization_ = quu_regularization;
+    convergence_threshold_ = convergence_threshold;
+}
+
 void iLQR::backwardPass() { 
     // Reset expected reduction
     dV_.setZero();
@@ -332,10 +353,8 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     // Compute baseline cost
     double baseline_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
     
-    // More aggressive line search parameters
-    std::vector<double> alphas = {1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01};
-    
-    for (double alpha : alphas) {
+    // Line search with configured alphas
+    for (double alpha : line_search_alphas_) {
         // Forward pass with current alpha
         std::vector<Eigen::VectorXd> x_new(N_ + 1);
         std::vector<Eigen::VectorXd> u_new(N_);
@@ -363,7 +382,7 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
         double cost = computeTotalCost(x_new, u_new, x_ref, u_ref);
         
         // Accept if cost decreased (simple sufficient decrease condition)
-        if (cost < baseline_cost - 1e-6) {
+        if (cost < baseline_cost - line_search_tolerance_) {
             xbar_ = x_new;
             ubar_ = u_new;
             new_cost = cost;
@@ -671,17 +690,17 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
                     double ratio = actual_red / expected_red;
                     
                     // Trust region: adapt lambda based on model quality
-                    if (ratio > 0.75) {
+                    if (ratio > trust_region_good_) {
                         // Model is GOOD → decrease regularization (faster Newton)
-                        reg_lambda_ = std::max(reg_lambda_ / 10.0, 1e-6);
-                    } else if (ratio < 0.25) {
+                        reg_lambda_ = std::max(reg_lambda_ / reg_decrease_factor_, reg_min_);
+                    } else if (ratio < trust_region_poor_) {
                         // Model is POOR → increase regularization (safer gradient)
-                        reg_lambda_ = std::min(reg_lambda_ * 10.0, 100.0);
+                        reg_lambda_ = std::min(reg_lambda_ * reg_increase_factor_, reg_max_);
                     }
-                    // else: 0.25 <= ratio <= 0.75 → keep lambda unchanged
+                    // else: trust_region_poor <= ratio <= trust_region_good → keep lambda unchanged
                 } else {
                     // Fallback:  expected reduction too small, decrease lambda
-                    reg_lambda_ = std::max(reg_lambda_ / 2.0, 1e-6);
+                    reg_lambda_ = std::max(reg_lambda_ / 2.0, reg_min_);
                 }
             }
             current_cost = new_cost;
@@ -695,7 +714,7 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
         double delta = std::abs(current_cost - previous_cost);
         double relative_delta = delta / std::max(1.0, std::abs(previous_cost));
         
-        if (relative_delta < tolerance_ || delta < 1e-8) {
+        if (relative_delta < tolerance_ || delta < convergence_threshold_) {
             break;  // Converged
         }
         if (current_cost > 1e6) break;

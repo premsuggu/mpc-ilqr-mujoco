@@ -92,6 +92,29 @@ mpc:
     joint_limit_weight: 1500.0    # Keep same (safety)
     torque_limit_weight: 1500.0   # Keep same (safety)
 
+  # iLQR solver settings
+  ilqr_settings:
+    # Main solver parameters
+    initial_regularization: 1.0e-6    # Initial regularization lambda
+    max_iterations: 10                # Maximum iLQR iterations per solve
+    tolerance: 1.0e-4                 # Relative cost change tolerance
+    
+    # Regularization adaptation (trust region)
+    reg_min: 1.0e-6                   # Minimum regularization
+    reg_max: 100.0                    # Maximum regularization
+    reg_increase_factor: 10.0         # Multiply by this when model is poor
+    reg_decrease_factor: 10.0         # Divide by this when model is good
+    trust_region_good: 0.75           # Threshold for good model (ratio > this)
+    trust_region_poor: 0.25           # Threshold for poor model (ratio < this)
+    
+    # Line search parameters
+    line_search_alphas: [1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01]  # Step sizes to try
+    line_search_tolerance: 1.0e-6     # Minimum cost decrease required
+    
+    # Numerical stability
+    quu_regularization: 1.0e-4        # Extra regularization for Quu matrix
+    convergence_threshold: 1.0e-8     # Absolute cost change threshold
+
 paths:
   logs_dir: "logs"
   results_dir: "results"

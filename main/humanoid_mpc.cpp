@@ -78,6 +78,20 @@ int main() {
     
     // Configure norm parameters for all cost terms
     mpc.configureNorms(config.norm_params);
+    
+    // Configure iLQR solver settings
+    mpc.configureSolver(
+        config.mpc.ilqr_settings.reg_min,
+        config.mpc.ilqr_settings.reg_max,
+        config.mpc.ilqr_settings.reg_increase_factor,
+        config.mpc.ilqr_settings.reg_decrease_factor,
+        config.mpc.ilqr_settings.trust_region_good,
+        config.mpc.ilqr_settings.trust_region_poor,
+        config.mpc.ilqr_settings.line_search_alphas,
+        config.mpc.ilqr_settings.line_search_tolerance,
+        config.mpc.ilqr_settings.quu_regularization,
+        config.mpc.ilqr_settings.convergence_threshold
+    );
 
     // Initialize Rerun visualization if enabled
     RerunLogger* rerun_logger = nullptr;

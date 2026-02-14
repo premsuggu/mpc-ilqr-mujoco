@@ -73,6 +73,39 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();
         config.mpc.torque_limit_weight = constraints_node["torque_limit_weight"].as<double>();
         
+        // Load iLQR solver settings
+        if (mpc_node["ilqr_settings"]) {
+            auto solver_node = mpc_node["ilqr_settings"];
+            config.mpc.ilqr_settings.initial_regularization = solver_node["initial_regularization"].as<double>();
+            config.mpc.ilqr_settings.max_iterations = solver_node["max_iterations"].as<int>();
+            config.mpc.ilqr_settings.tolerance = solver_node["tolerance"].as<double>();
+            config.mpc.ilqr_settings.reg_min = solver_node["reg_min"].as<double>();
+            config.mpc.ilqr_settings.reg_max = solver_node["reg_max"].as<double>();
+            config.mpc.ilqr_settings.reg_increase_factor = solver_node["reg_increase_factor"].as<double>();
+            config.mpc.ilqr_settings.reg_decrease_factor = solver_node["reg_decrease_factor"].as<double>();
+            config.mpc.ilqr_settings.trust_region_good = solver_node["trust_region_good"].as<double>();
+            config.mpc.ilqr_settings.trust_region_poor = solver_node["trust_region_poor"].as<double>();
+            config.mpc.ilqr_settings.line_search_alphas = solver_node["line_search_alphas"].as<std::vector<double>>();
+            config.mpc.ilqr_settings.line_search_tolerance = solver_node["line_search_tolerance"].as<double>();
+            config.mpc.ilqr_settings.quu_regularization = solver_node["quu_regularization"].as<double>();
+            config.mpc.ilqr_settings.convergence_threshold = solver_node["convergence_threshold"].as<double>();
+        } else {
+            // Default values if not specified
+            config.mpc.ilqr_settings.initial_regularization = 1e-6;
+            config.mpc.ilqr_settings.max_iterations = 10;
+            config.mpc.ilqr_settings.tolerance = 1e-4;
+            config.mpc.ilqr_settings.reg_min = 1e-6;
+            config.mpc.ilqr_settings.reg_max = 100.0;
+            config.mpc.ilqr_settings.reg_increase_factor = 10.0;
+            config.mpc.ilqr_settings.reg_decrease_factor = 10.0;
+            config.mpc.ilqr_settings.trust_region_good = 0.75;
+            config.mpc.ilqr_settings.trust_region_poor = 0.25;
+            config.mpc.ilqr_settings.line_search_alphas = {1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01};
+            config.mpc.ilqr_settings.line_search_tolerance = 1e-6;
+            config.mpc.ilqr_settings.quu_regularization = 1e-4;
+            config.mpc.ilqr_settings.convergence_threshold = 1e-8;
+        }
+        
         // Load norm types for cost terms
         if (mpc_node["norm_types"]) {
             const YAML::Node& norm_types = mpc_node["norm_types"];

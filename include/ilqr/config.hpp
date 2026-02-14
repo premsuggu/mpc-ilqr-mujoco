@@ -29,6 +29,23 @@ struct MpcParams {
     CostWeights costs;
     double joint_limit_weight;
     double torque_limit_weight;
+    
+    // iLQR solver settings
+    struct ILQRSettings {
+        double initial_regularization;
+        int max_iterations;
+        double tolerance;
+        double reg_min;
+        double reg_max;
+        double reg_increase_factor;
+        double reg_decrease_factor;
+        double trust_region_good;
+        double trust_region_poor;
+        std::vector<double> line_search_alphas;
+        double line_search_tolerance;
+        double quu_regularization;
+        double convergence_threshold;
+    } ilqr_settings;
 };
 
 // Main Config struct to hold everything

@@ -357,3 +357,13 @@ void MPC::finalizeOptimalTrajectoryLog() {
 void MPC::configureNorms(const std::map<std::string, ilqr::NormParams>& norm_params) {
     ilqr_.setNormParams(norm_params);
 }
+
+void MPC::configureSolver(double reg_min, double reg_max, double reg_increase_factor,
+                         double reg_decrease_factor, double trust_region_good,
+                         double trust_region_poor, const std::vector<double>& line_search_alphas,
+                         double line_search_tolerance, double quu_regularization,
+                         double convergence_threshold) {
+    ilqr_.configureSolver(reg_min, reg_max, reg_increase_factor, reg_decrease_factor,
+                         trust_region_good, trust_region_poor, line_search_alphas,
+                         line_search_tolerance, quu_regularization, convergence_threshold);
+}
