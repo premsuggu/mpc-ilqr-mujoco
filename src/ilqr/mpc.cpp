@@ -353,3 +353,7 @@ void MPC::finalizeOptimalTrajectoryLog() {
     }
     std::cout << "Optimal trajectory logs finalized: " << trajectory_base_path_ << "/q_optimal.csv and u_optimal.csv" << std::endl;
 }
+
+void MPC::configureNorms(const std::map<std::string, ilqr::NormParams>& norm_params) {
+    ilqr_.setNormParams(norm_params);
+}

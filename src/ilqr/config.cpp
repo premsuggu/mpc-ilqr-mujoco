@@ -72,6 +72,22 @@ Config loadConfigFromFile(const std::string& filepath) {
         auto constraints_node = mpc_node["constraints"];
         config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();
         config.mpc.torque_limit_weight = constraints_node["torque_limit_weight"].as<double>();
+        
+        // Load norm types for cost terms
+        if (mpc_node["norm_types"]) {
+            const YAML::Node& norm_types = mpc_node["norm_types"];
+            
+            for (YAML::const_iterator it = norm_types.begin(); it != norm_types.end(); ++it) {
+                std::string cost_name = it->first.as<std::string>();
+                int type = it->second["type"].as<int>();
+                double p = it->second["p"].as<double>();
+                double q = it->second["q"].as<double>();
+                
+                config.norm_params[cost_name] = ilqr::NormParams{
+                    static_cast<ilqr::NormType>(type), p, q
+                };
+            }
+        }
 
     } catch (const YAML::Exception& e) {
         std::cerr << "Failed to load or parse config.yaml: " << e.what() << std::endl;

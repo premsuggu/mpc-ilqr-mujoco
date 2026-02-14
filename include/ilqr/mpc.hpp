@@ -2,9 +2,11 @@
 
 #include "ilqr/robot_utils.hpp"
 #include "ilqr/ilqr.hpp"
+#include "ilqr/norm.hpp"
 #include <vector>
 #include <fstream>
 #include <string>
+#include <map>
 
 /**
  * @brief Model Predictive Control orchestrator
@@ -32,6 +34,12 @@ public:
      * @param g Gravity magnitude (m/s^2)
      */
     void setGravity(double g) { ilqr_.setGravity(g); }
+    
+    /**
+     * @brief Configure norm parameters for all cost terms
+     * @param norm_params Map of cost term names to their norm configurations
+     */
+    void configureNorms(const std::map<std::string, ilqr::NormParams>& norm_params);
 
     // CSV logging (now always enabled once initialized)
     void enableCSVLogging(const std::string& filename); // kept for filename selection

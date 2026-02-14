@@ -75,6 +75,9 @@ int main() {
                                    config.mpc.gravity[2] * config.mpc.gravity[2]);
     mpc.setGravity(g_magnitude);
     std::cout << "Gravity magnitude set to: " << g_magnitude << " m/s^2" << std::endl;
+    
+    // Configure norm parameters for all cost terms
+    mpc.configureNorms(config.norm_params);
 
     // Initialize Rerun visualization if enabled
     RerunLogger* rerun_logger = nullptr;

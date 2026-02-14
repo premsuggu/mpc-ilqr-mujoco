@@ -51,6 +51,43 @@ mpc:
     W_upright: 5.0           # MJPC "Upright" = 5.0 (was 20.0 - 4x reduction)
     w_balance: 5.0           # MJPC "Balance" = 5.0 (was 30.0 - 6x reduction)
 
+  # Norm types for each cost term
+  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7)
+  # Parameters: p (regularization), q (power for L22 norm)
+  norm_types:
+    com_position:
+      type: 0      # quadratic: r^T*r
+      p: 1.0
+      q: 1.0
+    com_velocity:
+      type: 0
+      p: 1.0
+      q: 1.0
+    ee_position_foot_left:
+      type: 0
+      p: 1.0
+      q: 1.0
+    ee_position_foot_right:
+      type: 0
+      p: 1.0
+      q: 1.0
+    ee_velocity_foot_left:
+      type: 0
+      p: 1.0
+      q: 1.0
+    ee_velocity_foot_right:
+      type: 0
+      p: 1.0
+      q: 1.0
+    upright:
+      type: 0
+      p: 1.0
+      q: 1.0
+    balance:
+      type: 0
+      p: 1.0
+      q: 1.0
+
   constraints:
     joint_limit_weight: 1500.0    # Keep same (safety)
     torque_limit_weight: 1500.0   # Keep same (safety)

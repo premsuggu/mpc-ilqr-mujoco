@@ -251,6 +251,10 @@ void iLQR::setRegularization(double lambda) {
     reg_lambda_ = lambda;
 }
 
+void iLQR::setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params) {
+    derivatives_.setNormParams(norm_params);
+}
+
 void iLQR::backwardPass() { 
     // Reset expected reduction
     dV_.setZero();

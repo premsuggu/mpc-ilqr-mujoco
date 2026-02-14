@@ -7,6 +7,13 @@
 #include <casadi/casadi.hpp>
 #include <Eigen/Dense>
 #include <string>
+#include <map>
+
+// Forward declare NormParams to avoid circular dependency
+namespace ilqr {
+    enum class NormType;
+    struct NormParams;
+}
 
 namespace derivatives {
 
@@ -175,6 +182,12 @@ public:
      * @brief Get current gravity magnitude
      */
     double getGravity() const { return gravity_; }
+    
+    /**
+     * @brief Set norm parameters for all cost terms
+     * @param norm_params Map of cost term names to their norm configurations
+     */
+    void setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params);
 
     // Make data accessible to validation functions
     pinocchio::Model model_;
@@ -250,16 +263,21 @@ private:
     
     ::casadi::SX symEEPos(const ::casadi::SX& target_pos,
                           const ::casadi::SX& weight,
-                          pinocchio::FrameIndex frame_id);
+                          pinocchio::FrameIndex frame_id,
+                          const std::string& frame_name);
     
     ::casadi::SX symEEVel(const ::casadi::SX& target_vel,
                           const ::casadi::SX& weight,
-                          pinocchio::FrameIndex frame_id);
+                          pinocchio::FrameIndex frame_id,
+                          const std::string& frame_name);
     
     ::casadi::SX symUpright(const ::casadi::SX& weight);
     
     ::casadi::SX symBalance(const ::casadi::SX& p_support,
                             const ::casadi::SX& weight);
+                            
+    // Norm parameters for each cost term
+    std::map<std::string, ilqr::NormParams> norm_params_;
 public:
     pinocchio::FrameIndex getFrameId(const std::string& frame_name);
 };

@@ -2,7 +2,10 @@
 
 #include "ilqr/robot_utils.hpp"
 #include "ilqr/derivatives.hpp"
+#include "ilqr/norm.hpp"
 #include <vector>
+#include <map>
+#include <string>
 
 /**
  * @brief Iterative LQR solver for MPC
@@ -28,6 +31,12 @@ public:
      * @param g Gravity magnitude (m/s^2)
      */
     void setGravity(double g) { derivatives_.setGravity(g); }
+    
+    /**
+     * @brief Set norm parameters for all cost terms
+     * @param norm_params Map of cost term names to their norm configurations
+     */
+    void setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params);
 
     // solve (multi-iteration iLQR)
     bool solve(const Eigen::VectorXd& x0,
@@ -97,7 +106,7 @@ private:
                                const std::vector<Eigen::VectorXd>& u_ref,
                                double& new_cost);
     
-    // Symbolic cost derivatives (replacing finite difference methods)
+    // Symbolic cost derivatives
     void addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref);
     void addCoMVelCostDerivatives(int t);  // SEPARATE velocity tracking
     void addEEPosCostDerivatives(int t);

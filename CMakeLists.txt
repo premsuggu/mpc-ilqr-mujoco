@@ -43,6 +43,8 @@ find_package(rerun_sdk REQUIRED CONFIG)
 add_executable(humanoid_mpc
     src/ilqr/robot_utils.cpp
     src/ilqr/config.cpp
+    src/ilqr/norm.cpp
+    src/ilqr/cost.cpp
     src/ilqr/derivatives.cpp
     src/ilqr/ilqr.cpp
     src/ilqr/mpc.cpp

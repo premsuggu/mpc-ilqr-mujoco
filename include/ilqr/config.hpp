@@ -2,8 +2,10 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <yaml-cpp/yaml.h>
 #include <Eigen/Dense>
+#include "ilqr/norm.hpp"
 
 // Struct to hold cost function weights
 struct CostWeights {
@@ -51,6 +53,9 @@ struct Config {
     Eigen::MatrixXd Q;
     Eigen::MatrixXd R;
     Eigen::MatrixXd Qf;
+    
+    // Norm parameters for each cost term
+    std::map<std::string, ilqr::NormParams> norm_params;
     
     // Build cost matrices based on robot dimensions
     void buildCostMatrices(int nx, int nu, int nq);
