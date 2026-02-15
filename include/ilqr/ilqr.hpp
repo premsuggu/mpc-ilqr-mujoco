@@ -43,9 +43,9 @@ public:
      */
     void configureSolver(double reg_min, double reg_max, double reg_increase_factor,
                         double reg_decrease_factor, double trust_region_good,
-                        double trust_region_poor, const std::vector<double>& line_search_alphas,
-                        double line_search_tolerance, double quu_regularization,
-                        double convergence_threshold);
+                        double trust_region_poor, int num_line_search_steps,
+                        double min_linesearch_step, double line_search_tolerance,
+                        double quu_regularization, double convergence_threshold);
 
     // solve (multi-iteration iLQR)
     bool solve(const Eigen::VectorXd& x0,
@@ -86,7 +86,8 @@ private:
     double reg_decrease_factor_;
     double trust_region_good_;
     double trust_region_poor_;
-    std::vector<double> line_search_alphas_;
+    int num_line_search_steps_;       // Number of line search candidates
+    double min_linesearch_step_;      // Minimum line search step size
     double line_search_tolerance_;
     double quu_regularization_;
     double convergence_threshold_;

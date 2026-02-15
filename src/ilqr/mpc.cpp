@@ -360,10 +360,11 @@ void MPC::configureNorms(const std::map<std::string, ilqr::NormParams>& norm_par
 
 void MPC::configureSolver(double reg_min, double reg_max, double reg_increase_factor,
                          double reg_decrease_factor, double trust_region_good,
-                         double trust_region_poor, const std::vector<double>& line_search_alphas,
-                         double line_search_tolerance, double quu_regularization,
-                         double convergence_threshold) {
+                         double trust_region_poor, int num_line_search_steps,
+                         double min_linesearch_step, double line_search_tolerance,
+                         double quu_regularization, double convergence_threshold) {
     ilqr_.configureSolver(reg_min, reg_max, reg_increase_factor, reg_decrease_factor,
-                         trust_region_good, trust_region_poor, line_search_alphas,
-                         line_search_tolerance, quu_regularization, convergence_threshold);
+                         trust_region_good, trust_region_poor, num_line_search_steps,
+                         min_linesearch_step, line_search_tolerance,
+                         quu_regularization, convergence_threshold);
 }

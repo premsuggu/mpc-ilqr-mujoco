@@ -17,7 +17,7 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
           N_(N), dt_(dt), reg_lambda_(1e-6), max_iterations_(10), tolerance_(1e-4),
           reg_min_(1e-6), reg_max_(100.0), reg_increase_factor_(10.0), reg_decrease_factor_(10.0),
           trust_region_good_(0.75), trust_region_poor_(0.25),
-          line_search_alphas_({1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01}),
+          num_line_search_steps_(10), min_linesearch_step_(1e-3),
           line_search_tolerance_(1e-6), quu_regularization_(1e-4), convergence_threshold_(1e-8) {
     // Set up all the storage for trajectories, gains, and derivatives
     int nx = robot_.nx();
@@ -263,16 +263,17 @@ void iLQR::setNormParams(const std::map<std::string, ilqr::NormParams>& norm_par
 
 void iLQR::configureSolver(double reg_min, double reg_max, double reg_increase_factor,
                           double reg_decrease_factor, double trust_region_good,
-                          double trust_region_poor, const std::vector<double>& line_search_alphas,
-                          double line_search_tolerance, double quu_regularization,
-                          double convergence_threshold) {
+                          double trust_region_poor, int num_line_search_steps,
+                          double min_linesearch_step, double line_search_tolerance,
+                          double quu_regularization, double convergence_threshold) {
     reg_min_ = reg_min;
     reg_max_ = reg_max;
     reg_increase_factor_ = reg_increase_factor;
     reg_decrease_factor_ = reg_decrease_factor;
     trust_region_good_ = trust_region_good;
     trust_region_poor_ = trust_region_poor;
-    line_search_alphas_ = line_search_alphas;
+    num_line_search_steps_ = num_line_search_steps;
+    min_linesearch_step_ = min_linesearch_step;
     line_search_tolerance_ = line_search_tolerance;
     quu_regularization_ = quu_regularization;
     convergence_threshold_ = convergence_threshold;
@@ -355,8 +356,22 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     // Compute baseline cost
     double baseline_cost = computeTotalCost(xbar_, ubar_, x_ref, u_ref);
     
-    // Line search with configured alphas
-    for (double alpha : line_search_alphas_) {
+    // Generate log-scaled line search alphas (DeepMind MJPC style)
+    // Formula: alpha[i] = exp(log(min) + i * step) where step = (log(max) - log(min)) / (num_steps - 1)
+    std::vector<double> alphas(num_line_search_steps_);
+    if (num_line_search_steps_ > 1) {
+        double log_max = std::log(1.0);
+        double log_min = std::log(min_linesearch_step_);
+        double step = (log_max - log_min) / std::max(num_line_search_steps_ - 1, 1);
+        for (int i = 0; i < num_line_search_steps_; ++i) {
+            alphas[i] = std::exp(log_min + i * step);
+        }
+    } else if (num_line_search_steps_ == 1) {
+        alphas[0] = 1.0;
+    }
+    
+    // Line search with log-scaled alphas
+    for (double alpha : alphas) {
         // Forward pass with current alpha
         std::vector<Eigen::VectorXd> x_new(N_ + 1);
         std::vector<Eigen::VectorXd> u_new(N_);

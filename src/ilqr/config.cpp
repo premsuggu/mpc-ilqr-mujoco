@@ -85,7 +85,8 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.reg_decrease_factor = solver_node["reg_decrease_factor"].as<double>();
             config.mpc.ilqr_settings.trust_region_good = solver_node["trust_region_good"].as<double>();
             config.mpc.ilqr_settings.trust_region_poor = solver_node["trust_region_poor"].as<double>();
-            config.mpc.ilqr_settings.line_search_alphas = solver_node["line_search_alphas"].as<std::vector<double>>();
+            config.mpc.ilqr_settings.num_line_search_steps = solver_node["num_line_search_steps"].as<int>();
+            config.mpc.ilqr_settings.min_linesearch_step = solver_node["min_linesearch_step"].as<double>();
             config.mpc.ilqr_settings.line_search_tolerance = solver_node["line_search_tolerance"].as<double>();
             config.mpc.ilqr_settings.quu_regularization = solver_node["quu_regularization"].as<double>();
             config.mpc.ilqr_settings.convergence_threshold = solver_node["convergence_threshold"].as<double>();
@@ -100,7 +101,8 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.reg_decrease_factor = 10.0;
             config.mpc.ilqr_settings.trust_region_good = 0.75;
             config.mpc.ilqr_settings.trust_region_poor = 0.25;
-            config.mpc.ilqr_settings.line_search_alphas = {1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01};
+            config.mpc.ilqr_settings.num_line_search_steps = 10;
+            config.mpc.ilqr_settings.min_linesearch_step = 1e-3;
             config.mpc.ilqr_settings.line_search_tolerance = 1e-6;
             config.mpc.ilqr_settings.quu_regularization = 1e-4;
             config.mpc.ilqr_settings.convergence_threshold = 1e-8;

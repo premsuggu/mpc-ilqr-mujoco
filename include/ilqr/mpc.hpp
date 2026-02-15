@@ -46,9 +46,9 @@ public:
      */
     void configureSolver(double reg_min, double reg_max, double reg_increase_factor,
                         double reg_decrease_factor, double trust_region_good,
-                        double trust_region_poor, const std::vector<double>& line_search_alphas,
-                        double line_search_tolerance, double quu_regularization,
-                        double convergence_threshold);
+                        double trust_region_poor, int num_line_search_steps,
+                        double min_linesearch_step, double line_search_tolerance,
+                        double quu_regularization, double convergence_threshold);
 
     // CSV logging (now always enabled once initialized)
     void enableCSVLogging(const std::string& filename); // kept for filename selection

@@ -41,7 +41,8 @@ struct MpcParams {
         double reg_decrease_factor;
         double trust_region_good;
         double trust_region_poor;
-        std::vector<double> line_search_alphas;
+        int num_line_search_steps;        // Number of line search candidates
+        double min_linesearch_step;       // Minimum line search step size
         double line_search_tolerance;
         double quu_regularization;
         double convergence_threshold;
