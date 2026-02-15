@@ -20,21 +20,21 @@ mpc:
   contact_impratio: 100.0  # Contact stiffness
 
   cost_weights:
-    # State deviation weights (Q matrix) - Aligned with DeepMind MJPC
-    Q_position_x: 5.0        # DeepMind "Height" (x) = 5.0
-    Q_position_y: 5.0        # DeepMind "Height" (y) = 5.0
-    Q_position_z: 5.0        # DeepMind "Height" (z) = 5.0 - TORSO HEIGHT TRACKING
-    Q_quat_w: 5.0            # DeepMind "Upright" = 5.0
-    Q_quat_xyz: [5.0, 5.0, 5.0]  # Orientation tracking
-    Q_joint_pos: 0.025       # DeepMind "Posture" = 0.025
+    # State deviation weights (Q matrix) - EXACT DeepMind MJPC values
+    Q_position_x: 5.0        # Not directly used (Height uses SmoothAbs2Loss separately)
+    Q_position_y: 5.0        # Not directly used
+    Q_position_z: 5.0        # DeepMind "Height" = 5.0 with SmoothAbs2Loss(p=0.1, q=4.0)
+    Q_quat_w: 5.0            # Part of "Upright" = 5.0 with L2(p=0.01)
+    Q_quat_xyz: [5.0, 5.0, 5.0]  # Part of "Upright" orientation tracking
+    Q_joint_pos: 0.025       # DeepMind "Posture" = 0.025 with Quadratic norm
     Q_vel_x: 0.0             # Not in MJPC (set to 0)
     Q_vel_y: 0.0             # Not in MJPC (set to 0)
     Q_vel_z: 0.0             # Not in MJPC (set to 0)
     Q_ang_vel: 0.0           # Not in MJPC (set to 0)
     Q_joint_vel: 0.0         # Not in MJPC (set to 0)
     
-    # Control effort weight (R matrix)
-    R_control: 0.1           # DeepMind "Control" = 0.1
+    # Control effort weight (R matrix) - Uses Cosh norm in DeepMind
+    R_control: 0.1           # DeepMind "Control" = 0.1 with Cosh(p=0.3)
     
     # Terminal cost multiplier (Qf = Q * Qf_multiplier)
     Qf_multiplier: 2.0       # Keep same
@@ -44,64 +44,61 @@ mpc:
     Qf_vel_z: 2.0
     
     # Task-specific weights - DeepMind MJPC
-    # These weights can be scalars (uniform) or 3D vectors [x, y, z] for component-wise tuning
-    # Vector format allows prioritizing specific directions (e.g., vertical height over horizontal drift)
-    
-    W_com_pos: [5.0, 5.0, 5.0]       # CoM position tracking [x, y, z] - DeepMind "Balance" = 5.0
-                                      # Example: [1.0, 1.0, 10.0] to prioritize height
-    
-    W_com_vel: [0.625, 0.625, 0.625] # CoM velocity tracking [x, y, z] - DeepMind "Velocity" = 0.625
-                                      # Controls forward/lateral velocity tracking
-    
-    W_foot: [1.0, 1.0, 1.0]          # End-effector position [x, y, z] - DeepMind "Pelvis/Feet" = 1.0
-                                      # Applied during swing phase for foot trajectory tracking
-                                      # Example: [1.0, 1.0, 5.0] to prioritize foot clearance height
-    
-    W_foot_vel: [1.0, 1.0, 1.0]      # End-effector velocity [x, y, z] - DeepMind = 1.0
-                                      # Applied during stance phase to keep foot planted
-    
-    W_upright: 5.0                    # Torso orientation (scalar) - DeepMind "Upright" = 5.0
-                                      # Penalizes deviation from vertical orientation
-    
-    w_balance: 5.0                    # Capture point tracking (scalar) - DeepMind "Balance" = 5.0
-                                      # Linear Inverted Pendulum stability criterion
+    W_com_pos: 5.0           # DeepMind "Balance" = 5.0 (Capture point)
+    W_com_vel: 0.625         # DeepMind "Velocity" = 0.625 (CoM velocity tracking)
+    W_foot: 1.0              # DeepMind "Pelvis/Feet" = 1.0
+    W_foot_vel: 1.0          # DeepMind foot tracking
+    W_upright: 5.0           # DeepMind "Upright" = 5.0
+    w_balance: 5.0           # DeepMind "Balance" = 5.0 (redundant with W_com_pos)
 
-  # Norm types for each cost term
-  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7)
-  # Parameters: p (regularization), q (power for L22 norm)
+  # Norm types for each cost term - EXACT DeepMind MJPC values
+  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7), rectify (8)
+  # Parameters: p (regularization), q (power parameter)
+  # Reference: others/mujoco_mpc/mjpc/tasks/humanoid/walk/task.xml
   norm_types:
-    com_position:
-      type: 0      # quadratic: r^T*r
-      p: 1.0
-      q: 1.0
-    com_velocity:
-      type: 0
-      p: 1.0
-      q: 1.0
-    ee_position_foot_left:
-      type: 0
-      p: 1.0
-      q: 1.0
-    ee_position_foot_right:
-      type: 0
-      p: 1.0
-      q: 1.0
-    ee_velocity_foot_left:
-      type: 0
-      p: 1.0
-      q: 1.0
-    ee_velocity_foot_right:
-      type: 0
-      p: 1.0
-      q: 1.0
-    upright:
-      type: 0
-      p: 1.0
-      q: 1.0
+    # Balance (capture point) - L22 norm with p=0.02, q=4.0
     balance:
-      type: 0
-      p: 1.0
+      type: 1      # L22: ((x*x')^q + p^(2*q))^(1/2/q) - p
+      p: 0.02
+      q: 4.0
+    
+    # Upright (orientation) - L2 norm with p=0.01
+    upright:
+      type: 2      # L2: sqrt(x*x' + p^2) - p
+      p: 0.01
+      q: 1.0       # Not used for L2
+    
+    # CoM Velocity - SmoothAbs2Loss with p=0.2, q=4.0
+    com_velocity:
+      type: 7      # SmoothAbs2Loss: (abs(x)^q + p^q)^(1/q) - p
+      p: 0.2
+      q: 4.0
+    
+    # CoM Position (Height) - SmoothAbs2Loss with p=0.1, q=4.0
+    com_position:
+      type: 7      # SmoothAbs2Loss
+      p: 0.1
+      q: 4.0
+    
+    # Foot position (Pelvis/Feet) - RectifyLoss with p=0.05
+    ee_position_foot_left:
+      type: 8      # RectifyLoss: p*log(1 + exp(x/p))
+      p: 0.05
+      q: 1.0       # Not used for RectifyLoss
+    ee_position_foot_right:
+      type: 8      # RectifyLoss
+      p: 0.05
       q: 1.0
+    
+    # Foot velocity - Use same as CoM velocity (SmoothAbs2Loss)
+    ee_velocity_foot_left:
+      type: 7      # SmoothAbs2Loss
+      p: 0.2
+      q: 4.0
+    ee_velocity_foot_right:
+      type: 7      # SmoothAbs2Loss
+      p: 0.2
+      q: 4.0
 
   constraints:
     joint_limit_weight: 1500.0    # Keep same (safety)

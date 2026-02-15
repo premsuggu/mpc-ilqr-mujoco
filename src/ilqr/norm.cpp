@@ -37,6 +37,20 @@ double applyNorm(const Eigen::VectorXd& residual, const NormParams& params) {
             return value;
         }
         
+        case NormType::Rectify: {
+            double value = 0.0;
+            for (int i = 0; i < residual.size(); ++i) {
+                if (params.p > 0) {
+                    double exp_val = std::exp(residual(i) / params.p);
+                    value += params.p * std::log(1.0 + exp_val);
+                } else {
+                    // p=0 case: max(0, x)
+                    value += residual(i) > 0 ? residual(i) : 0.0;
+                }
+            }
+            return value;
+        }
+        
         default:
             throw std::runtime_error("Unknown norm type");
     }
@@ -55,6 +69,8 @@ double applyNorm(const Eigen::VectorXd& residual, const NormParams& params) {
             return normCosh(residual, params.p);
         case NormType::SmoothAbs2Loss:
             return normSmoothAbs2Loss(residual, params.p, params.q);
+        case NormType::Rectify:
+            return normRectify(residual, params.p);
         default:
             throw std::runtime_error("Unknown norm type");
     }
@@ -90,6 +106,22 @@ double applyNorm(const Eigen::VectorXd& residual, const NormParams& params) {
         ::casadi::SX abs_r = ::casadi::SX::sqrt(r(i) * r(i));
         ::casadi::SX d = ::casadi::SX::pow(abs_r, q);
         value += ::casadi::SX::pow(d + p_q, 1.0 / q) - p;
+    }
+    return value;
+}
+
+::casadi::SX normRectify(const ::casadi::SX& r, double p) {
+    ::casadi::SX value = 0.0;
+    if (p > 0) {
+        for (int i = 0; i < r.size1(); ++i) {
+            ::casadi::SX exp_val = ::casadi::SX::exp(r(i) / p);
+            value += p * ::casadi::SX::log(1.0 + exp_val);
+        }
+    } else {
+        // p=0 case: max(0, x)
+        for (int i = 0; i < r.size1(); ++i) {
+            value += ::casadi::SX::fmax(0.0, r(i));
+        }
     }
     return value;
 }

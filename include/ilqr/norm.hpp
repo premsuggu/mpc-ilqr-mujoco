@@ -15,7 +15,8 @@ enum class NormType {
     L22 = 1,            // ((r·r)^(q/2) + p^(2q))^(1/(2q)) - p
     L2 = 2,             // sqrt(r^T * r + p^2) - p
     Cosh = 3,           // p^2 * (cosh(r/p) - 1)
-    SmoothAbs2Loss = 7  // (|r|^q + p^q)^(1/q) - p
+    SmoothAbs2Loss = 7, // (|r|^q + p^q)^(1/q) - p
+    Rectify = 8         // p * log(1 + exp(r/p)) - one-sided penalty
 };
 
 /**
@@ -41,5 +42,6 @@ double applyNorm(const Eigen::VectorXd& residual, const NormParams& params);
 ::casadi::SX normL22(const ::casadi::SX& r, double p, double q);
 ::casadi::SX normCosh(const ::casadi::SX& r, double p);
 ::casadi::SX normSmoothAbs2Loss(const ::casadi::SX& r, double p, double q);
+::casadi::SX normRectify(const ::casadi::SX& r, double p);
 
 }  // namespace ilqr
