@@ -90,6 +90,9 @@ private:
     double line_search_tolerance_;
     double quu_regularization_;
     double convergence_threshold_;
+    
+    // Cost norm configurations
+    std::map<std::string, ilqr::NormParams> norm_params_;
 
     // Nominal trajectories
     std::vector<Eigen::VectorXd> xbar_, ubar_;

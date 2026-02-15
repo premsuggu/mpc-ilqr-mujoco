@@ -866,6 +866,42 @@ Eigen::Vector3d RobotUtils::computeCoM(const Eigen::VectorXd& x) const {
     return (total_mass > 0) ? com / total_mass : com;
 }
 
+Eigen::Vector3d RobotUtils::computeEEPos(const Eigen::VectorXd& x, int ee_idx) const {
+    if (ee_idx < 0 || ee_idx >= (int)ee_site_ids_.size()) {
+        return Eigen::Vector3d::Zero();
+    }
+    
+    // Set state and compute FK
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_forward(model_, data_temp_);
+    
+    // Get body position
+    int body_id = ee_site_ids_[ee_idx];
+    return Eigen::Vector3d(
+        data_temp_->xpos[3*body_id + 0],
+        data_temp_->xpos[3*body_id + 1],
+        data_temp_->xpos[3*body_id + 2]
+    );
+}
+
+Eigen::Vector3d RobotUtils::computeEEVel(const Eigen::VectorXd& x, int ee_idx) const {
+    if (ee_idx < 0 || ee_idx >= (int)ee_site_ids_.size()) {
+        return Eigen::Vector3d::Zero();
+    }
+    
+    // Set state and compute velocities
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_kinematics(model_, data_temp_);
+    
+    // Get body linear velocity (cvel stores 6D: angular + linear)
+    int body_id = ee_site_ids_[ee_idx];
+    return Eigen::Vector3d(
+        data_temp_->cvel[6*body_id + 3],  // Linear x
+        data_temp_->cvel[6*body_id + 4],  // Linear y
+        data_temp_->cvel[6*body_id + 5]   // Linear z
+    );
+}
+
 void RobotUtils::scaleRobotMass(double scale_factor) {
     if (model_) {
         for (int i = 0; i < model_->nbody; ++i) {

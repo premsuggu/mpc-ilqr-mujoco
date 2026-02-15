@@ -156,15 +156,17 @@ private:
 
 public:
     
-    // CoM computation
+    // CoM and EE computation
     Eigen::Vector3d computeCoM(const Eigen::VectorXd& x) const;
+    Eigen::Vector3d computeCoMVelocity(const Eigen::VectorXd& x) const;
+    Eigen::Vector3d computeEEPos(const Eigen::VectorXd& x, int ee_idx) const;
+    Eigen::Vector3d computeEEVel(const Eigen::VectorXd& x, int ee_idx) const;
     
     // Rerun visualization helpers
     Eigen::VectorXd getJointLowerLimits() const;
     Eigen::VectorXd getJointUpperLimits() const;
     Eigen::VectorXd getTorqueLimits() const;
     std::vector<std::string> getJointNames() const;
-    Eigen::Vector3d computeCoMVelocity(const Eigen::VectorXd& x) const;
     std::vector<Eigen::Vector3d> getEndEffectorPositions() const;
     std::vector<bool> getContactStates(int time_step) const;
 

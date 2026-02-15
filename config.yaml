@@ -20,36 +20,51 @@ mpc:
   contact_impratio: 100.0  # Contact stiffness
 
   cost_weights:
-    # State deviation weights (Q matrix) - MJPC-inspired
-    Q_position_x: 5.0        # Reduced from 200.0
-    Q_position_y: 5.0        # Reduced from 50.0
-    Q_position_z: 5.0        # MJPC "Height" = 5.0 (was 200.0 - 40x reduction!)
-    Q_quat_w: 5.0            # MJPC "Upright" = 5.0 (was 50.0)
-    Q_quat_xyz: [5.0, 5.0, 5.0]  # Match upright weight (was [50, 50, 50])
-    Q_joint_pos: 0.025       # MJPC "Posture" = 0.025 (was 50.0 - 2000x reduction!)
-    Q_vel_x: 10.0            # Keep moderate damping
-    Q_vel_y: 10.0            # Keep moderate damping
-    Q_vel_z: 10.0            # Reduced from 150.0
-    Q_ang_vel: 10.0          # Reduced from 75.0
-    Q_joint_vel: 10.0        # Reduced from 75.0
+    # State deviation weights (Q matrix) - Aligned with DeepMind MJPC
+    Q_position_x: 5.0        # DeepMind "Height" (x) = 5.0
+    Q_position_y: 5.0        # DeepMind "Height" (y) = 5.0
+    Q_position_z: 5.0        # DeepMind "Height" (z) = 5.0 - TORSO HEIGHT TRACKING
+    Q_quat_w: 5.0            # DeepMind "Upright" = 5.0
+    Q_quat_xyz: [5.0, 5.0, 5.0]  # Orientation tracking
+    Q_joint_pos: 0.025       # DeepMind "Posture" = 0.025
+    Q_vel_x: 0.0             # Not in MJPC (set to 0)
+    Q_vel_y: 0.0             # Not in MJPC (set to 0)
+    Q_vel_z: 0.0             # Not in MJPC (set to 0)
+    Q_ang_vel: 0.0           # Not in MJPC (set to 0)
+    Q_joint_vel: 0.0         # Not in MJPC (set to 0)
     
     # Control effort weight (R matrix)
-    R_control: 0.1           # MJPC "Control" = 0.1 (was 0.01 - 10x increase)
+    R_control: 0.1           # DeepMind "Control" = 0.1
     
     # Terminal cost multiplier (Qf = Q * Qf_multiplier)
     Qf_multiplier: 2.0       # Keep same
-    Qf_position_x: 2.0       # Reduced from 5.0
-    Qf_position_y: 2.0       # Keep same
-    Qf_position_z: 2.0       # Reduced from 5.0
-    Qf_vel_z: 2.0            # Reduced from 4.0
+    Qf_position_x: 2.0
+    Qf_position_y: 2.0
+    Qf_position_z: 2.0
+    Qf_vel_z: 2.0
     
-    # Task-specific weights - MJPC-inspired
-    W_com_pos: 5.0           # MJPC "Balance" = 5.0 (was 100.0 - 20x reduction!)
-    W_com_vel: 0.0           # Keep disabled
-    W_foot: 1.0              # MJPC "Pelvis/Feet" = 1.0 (was 400.0 - 400x reduction!)
-    W_foot_vel: 1.0          # Match foot position (was 400.0 - 400x reduction!)
-    W_upright: 5.0           # MJPC "Upright" = 5.0 (was 20.0 - 4x reduction)
-    w_balance: 5.0           # MJPC "Balance" = 5.0 (was 30.0 - 6x reduction)
+    # Task-specific weights - DeepMind MJPC
+    # These weights can be scalars (uniform) or 3D vectors [x, y, z] for component-wise tuning
+    # Vector format allows prioritizing specific directions (e.g., vertical height over horizontal drift)
+    
+    W_com_pos: [5.0, 5.0, 5.0]       # CoM position tracking [x, y, z] - DeepMind "Balance" = 5.0
+                                      # Example: [1.0, 1.0, 10.0] to prioritize height
+    
+    W_com_vel: [0.625, 0.625, 0.625] # CoM velocity tracking [x, y, z] - DeepMind "Velocity" = 0.625
+                                      # Controls forward/lateral velocity tracking
+    
+    W_foot: [1.0, 1.0, 1.0]          # End-effector position [x, y, z] - DeepMind "Pelvis/Feet" = 1.0
+                                      # Applied during swing phase for foot trajectory tracking
+                                      # Example: [1.0, 1.0, 5.0] to prioritize foot clearance height
+    
+    W_foot_vel: [1.0, 1.0, 1.0]      # End-effector velocity [x, y, z] - DeepMind = 1.0
+                                      # Applied during stance phase to keep foot planted
+    
+    W_upright: 5.0                    # Torso orientation (scalar) - DeepMind "Upright" = 5.0
+                                      # Penalizes deviation from vertical orientation
+    
+    w_balance: 5.0                    # Capture point tracking (scalar) - DeepMind "Balance" = 5.0
+                                      # Linear Inverted Pendulum stability criterion
 
   # Norm types for each cost term
   # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7)
@@ -92,28 +107,33 @@ mpc:
     joint_limit_weight: 1500.0    # Keep same (safety)
     torque_limit_weight: 1500.0   # Keep same (safety)
 
-  # iLQR solver settings
+  # iLQR solver settings - ONLY parameters actually implemented in our code
+  # See docs/ilqr_parameter_comparison.md for full details
   ilqr_settings:
-    # Main solver parameters
-    initial_regularization: 1.0e-6    # Initial regularization lambda
-    max_iterations: 10                # Maximum iLQR iterations per solve
-    tolerance: 1.0e-4                 # Relative cost change tolerance
+    # Core solver parameters
+    initial_regularization: 1.0e-3         # Initial regularization value
+    max_iterations: 10                     # Maximum iLQR iterations
+    tolerance: 1.0e-4                      # Convergence tolerance
     
-    # Regularization adaptation (trust region)
-    reg_min: 1.0e-6                   # Minimum regularization
-    reg_max: 100.0                    # Maximum regularization
-    reg_increase_factor: 10.0         # Multiply by this when model is poor
-    reg_decrease_factor: 10.0         # Divide by this when model is good
-    trust_region_good: 0.75           # Threshold for good model (ratio > this)
-    trust_region_poor: 0.25           # Threshold for poor model (ratio < this)
+    # Regularization bounds and adaptation (aligned with MJPC where possible)
+    reg_min: 1.0e-6                        # Minimum regularization (MJPC: 1e-6)
+    reg_max: 1.0e6                         # Maximum regularization (MJPC: 1e6, was 100.0)
+    reg_increase_factor: 10.0              # Factor to increase regularization
+    reg_decrease_factor: 10.0              # Factor to decrease regularization
+    
+    # Trust region thresholds for regularization adaptation (aligned with MJPC)
+    trust_region_good: 0.5                 # Good improvement threshold (MJPC: z > 0.5)
+    trust_region_poor: 0.1                 # Poor improvement threshold (MJPC: z < 0.1)
     
     # Line search parameters
-    line_search_alphas: [1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01]  # Step sizes to try
-    line_search_tolerance: 1.0e-6     # Minimum cost decrease required
+    line_search_alphas: [1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01]  # Step size candidates
+    line_search_tolerance: 1.0e-6          # Line search convergence tolerance
     
-    # Numerical stability
-    quu_regularization: 1.0e-4        # Extra regularization for Quu matrix
-    convergence_threshold: 1.0e-8     # Absolute cost change threshold
+    # Quu regularization for numerical stability
+    quu_regularization: 1.0e-4             # Added to Quu diagonal
+    
+    # Convergence criterion
+    convergence_threshold: 1.0e-8          # Cost improvement threshold
 
 paths:
   logs_dir: "logs"

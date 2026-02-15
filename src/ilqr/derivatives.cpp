@@ -558,12 +558,13 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
         ad_data_.com[0][2]   // z
     };
     ::casadi::SX com_pos = ::casadi::SX::vertcat(com_components);
+    ::casadi::SX residual = com_pos - target_com;
     
     // Get norm params from configuration (default to quadratic if not found)
     ilqr::NormParams norm = norm_params_.count("com_position") > 0 
         ? norm_params_.at("com_position")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildCoMPositionCost(com_pos, target_com, weight, norm);
+    return ilqr::CoMPosCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symCoMVel(const ::casadi::SX& target_com_vel,
@@ -639,12 +640,13 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     
     // Compute CoM velocity: v_com = J_com * v_pin_local
     ::casadi::SX com_vel = ::casadi::SX::mtimes(J_com, v_pin_local_sx);
+    ::casadi::SX residual = com_vel - target_com_vel;
     
     // Get norm params from configuration
     ilqr::NormParams norm = norm_params_.count("com_velocity") > 0 
         ? norm_params_.at("com_velocity")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildCoMVelocityCost(com_vel, target_com_vel, weight, norm);
+    return ilqr::CoMVelCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symEEPos(const ::casadi::SX& target_pos,
@@ -669,13 +671,14 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
         ee_transform.translation()[1],
         ee_transform.translation()[2]
     });
+    ::casadi::SX residual = ee_pos - target_pos;
     
     // Determine norm key based on frame name
     std::string norm_key = "ee_position_" + frame_name;
     ilqr::NormParams norm = norm_params_.count(norm_key) > 0 
         ? norm_params_.at(norm_key)
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildEEPositionCost(ee_pos, target_pos, weight, norm);
+    return ilqr::EEPosCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symEEVel(const ::casadi::SX& target_vel,
@@ -752,13 +755,14 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     
     // Compute EE velocity: v_ee = J_pos * v_pin_local
     casadi::SX ee_vel = casadi::SX::mtimes(J_pos, v_pin_local_sx);
+    casadi::SX residual = ee_vel - target_vel;
     
     // Determine norm key based on frame name
     std::string norm_key = "ee_velocity_" + frame_name;
     ilqr::NormParams norm = norm_params_.count(norm_key) > 0 
         ? norm_params_.at(norm_key)
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildEEVelocityCost(ee_vel, target_vel, weight, norm);
+    return ilqr::EEVelCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symUpright(const ::casadi::SX& weight) {
@@ -776,12 +780,14 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     
     // Build torso z-axis vector
     ::casadi::SX torso_z = ::casadi::SX::vertcat({z_torso_x, z_torso_y, z_torso_z});
+    ::casadi::SX up = ::casadi::SX::vertcat({0.0, 0.0, 1.0});
+    ::casadi::SX residual = torso_z - up;
     
     // Get norm params from configuration
     ilqr::NormParams norm = norm_params_.count("upright") > 0 
         ? norm_params_.at("upright")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildUprightCost(torso_z, weight, norm);
+    return ilqr::uprightCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symBalance(const ::casadi::SX& p_support,
@@ -871,7 +877,8 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     casadi::SX vcom_y = com_vel(1);
     
     // Capture point: p_cp = p_com_xy + v_com_xy * sqrt(h_com / g)
-    casadi::SX h_com = pcom_z;
+    // Safety clamp to prevent division by zero
+    casadi::SX h_com = casadi::SX::fmax(pcom_z, 0.01);
     casadi::SX omega_0 = casadi::SX::sqrt(h_com / gravity_);
     
     std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
@@ -880,12 +887,13 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     casadi::SX v_com_2d = casadi::SX::vertcat(v_com_xy);
     
     casadi::SX p_cp = p_com_2d + v_com_2d * omega_0;
+    casadi::SX residual = p_cp - p_support;
     
     // Get norm params from configuration
     ilqr::NormParams norm = norm_params_.count("balance") > 0 
         ? norm_params_.at("balance")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::buildBalanceCost(p_cp, p_support, weight, norm);
+    return ilqr::balanceCost(residual, weight, norm);
 }
 
 pinocchio::FrameIndex symDerivatives::getFrameId(const std::string& frame_name) {

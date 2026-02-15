@@ -1,4 +1,5 @@
 #include "ilqr/ilqr.hpp"
+#include "ilqr/cost.hpp"
 #include <iostream>
 #include <chrono>
 
@@ -256,6 +257,7 @@ void iLQR::setRegularization(double lambda) {
 }
 
 void iLQR::setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params) {
+    norm_params_ = norm_params;  // Store for use in computeTotalCost
     derivatives_.setNormParams(norm_params);
 }
 
@@ -395,6 +397,59 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     return false;  // CRITICAL FIX: Signal that the line search failed
 }
 
+// ============================================================================
+// Helper functions for residual computation
+// ============================================================================
+
+// Extract torso z-axis from quaternion for upright cost
+inline Eigen::Vector3d computeTorsoZAxis(const Eigen::VectorXd& x) {
+    // MuJoCo state: [x,y,z,qw,qx,qy,qz,...]
+    double qw = x(3), qx = x(4), qy = x(5), qz = x(6);
+    return Eigen::Vector3d(
+        2.0 * (qx*qz + qw*qy),
+        2.0 * (qy*qz - qw*qx),
+        1.0 - 2.0 * (qx*qx + qy*qy)
+    );
+}
+
+// Compute capture point for balance cost
+inline Eigen::Vector2d computeCapturePoint(const Eigen::VectorXd& x, const Eigen::Vector3d& p_com, int nq, double g = 9.81) {
+    Eigen::Vector3d v_com(x(nq), x(nq+1), x(nq+2));
+    double omega = std::sqrt(std::max(p_com(2), 0.01) / g);  // Prevent division by zero
+    return Eigen::Vector2d(
+        p_com(0) + v_com(0) * omega,
+        p_com(1) + v_com(1) * omega
+    );
+}
+
+// Compute support center from stance feet
+inline Eigen::Vector2d computeSupportCenter(const RobotUtils& robot, int t) {
+    bool left_stance = robot.isStance(0, t);
+    bool right_stance = robot.isStance(1, t);
+    
+    if (left_stance && right_stance) {
+        Eigen::Vector3d left_foot = robot.getEEReference(t, 0);
+        Eigen::Vector3d right_foot = robot.getEEReference(t, 1);
+        return Eigen::Vector2d(
+            0.5 * (left_foot(0) + right_foot(0)),
+            0.5 * (left_foot(1) + right_foot(1))
+        );
+    } else if (left_stance) {
+        Eigen::Vector3d left_foot = robot.getEEReference(t, 0);
+        return left_foot.head<2>();
+    } else {  // right_stance only
+        Eigen::Vector3d right_foot = robot.getEEReference(t, 1);
+        return right_foot.head<2>();
+    }
+}
+
+// Get norm params with default fallback
+inline ilqr::NormParams getNormParams(const std::map<std::string, ilqr::NormParams>& norm_params, 
+                                     const std::string& key) {
+    auto it = norm_params.find(key);
+    return (it != norm_params.end()) ? it->second : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
+}
+
 double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
                              const std::vector<Eigen::VectorXd>& u_traj,
                              const std::vector<Eigen::VectorXd>& x_ref,
@@ -403,147 +458,104 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
     
     // Running cost
     for (int t = 0; t < N_; ++t) {
+        // State cost
         Eigen::VectorXd x_err = x_traj[t] - x_ref[t];
+        total_cost += ilqr::StateCost(x_err, robot_.Q());
+        
+        // Control cost
         Eigen::VectorXd u_err = u_traj[t] - u_ref[t];
+        total_cost += ilqr::ControlCost(u_err, robot_.R());
         
-        total_cost += 0.5 * x_err.transpose() * robot_.Q() * x_err;
-        total_cost += 0.5 * u_err.transpose() * robot_.R() * u_err;
-        
-        // Add upright cost contribution
-        if (robot_.getUprightWeight() > 0.0) {
-            // Extract quaternion from state (MuJoCo format: [x,y,z,qw,qx,qy,qz,...])
-            double qw = x_traj[t](3);
-            double qx = x_traj[t](4);
-            double qy = x_traj[t](5);
-            double qz = x_traj[t](6);
-            
-            // Compute torso z-axis in world frame
-            Eigen::Vector3d z_torso(
-                2.0 * (qx*qz + qw*qy),
-                2.0 * (qy*qz - qw*qx),
-                1.0 - 2.0 * (qx*qx + qy*qy)
-            );
-            
-            // Target is world z-axis
-            Eigen::Vector3d z_world(0.0, 0.0, 1.0);
-            
-            // Residual and cost
-            Eigen::Vector3d r_upright = z_torso - z_world;
-            total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
+        // CoM position cost
+        if (robot_.getCoMWeight() > 0.0) {
+            Eigen::Vector3d residual = robot_.computeCoM(x_traj[t]) - com_ref_[t];
+            total_cost += ilqr::CoMPosCost(residual, robot_.getCoMWeight(), getNormParams(norm_params_, "com_position"));
         }
         
-        // Add balance cost contribution (capture point)
+        // CoM velocity cost
+        if (robot_.getCoMVelWeight() > 0.0) {
+            Eigen::Vector3d residual = robot_.computeCoMVelocity(x_traj[t]) - robot_.getCoMVelReference(t);
+            total_cost += ilqr::CoMVelCost(residual, robot_.getCoMVelWeight(), getNormParams(norm_params_, "com_velocity"));
+        }
+        
+        // Upright cost
+        if (robot_.getUprightWeight() > 0.0) {
+            Eigen::Vector3d residual = computeTorsoZAxis(x_traj[t]) - Eigen::Vector3d(0, 0, 1);
+            total_cost += ilqr::uprightCost(residual, robot_.getUprightWeight(), getNormParams(norm_params_, "upright"));
+        }
+        
+        // Balance cost
         if (robot_.getBalanceWeight() > 0.0) {
-            // Compute support center dynamically
             bool left_stance = robot_.isStance(0, t);
             bool right_stance = robot_.isStance(1, t);
             
-            // Skip if no feet in stance (aerial phase)
             if (left_stance || right_stance) {
-                // Compute CoM position and velocity from current state
                 Eigen::Vector3d p_com = robot_.computeCoM(x_traj[t]);
-                
-                // Extract CoM velocity (base linear velocity approximation)
-                int nq = robot_.nq();
-                Eigen::Vector3d v_com(x_traj[t](nq + 0), x_traj[t](nq + 1), x_traj[t](nq + 2));
-                
-                double h_com = p_com(2);  // CoM height
-                double g = 9.81;
-                double omega_0 = std::sqrt(h_com / g);
-                
-                // Capture point: p_cp = p_com_xy + v_com_xy * omega_0
-                Eigen::Vector2d p_cp(p_com(0) + v_com(0) * omega_0, p_com(1) + v_com(1) * omega_0);
-                
-                // Compute support center
-                Eigen::Vector2d p_support;
-                if (left_stance && right_stance) {
-                    Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
-                    Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
-                    p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
-                    p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
-                } else if (left_stance) {
-                    Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
-                    p_support(0) = left_foot(0);
-                    p_support(1) = left_foot(1);
-                } else {  // right_stance only
-                    Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
-                    p_support(0) = right_foot(0);
-                    p_support(1) = right_foot(1);
+                Eigen::Vector2d p_support = computeSupportCenter(robot_, t);
+                Eigen::Vector2d p_cp = computeCapturePoint(x_traj[t], p_com, robot_.nq());
+                Eigen::Vector2d residual = p_cp - p_support;
+                total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
+            }
+        }
+        
+        // EE position cost (during swing)
+        if (robot_.getEEPosWeight() > 0.0) {
+            for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {
+                if (!robot_.isStance(ee_idx, t)) {
+                    Eigen::Vector3d residual = robot_.computeEEPos(x_traj[t], ee_idx) - robot_.getEEReference(t, ee_idx);
+                    total_cost += ilqr::EEPosCost(residual, robot_.getEEPosWeight(), getNormParams(norm_params_, "ee_position"));
                 }
-                
-                // Balance cost: 0.5 * w * ||p_cp - p_support||²
-                Eigen::Vector2d residual_balance = p_cp - p_support;
-                total_cost += 0.5 * robot_.getBalanceWeight() * residual_balance.squaredNorm();
+            }
+        }
+        
+        // EE velocity cost (during stance)
+        if (robot_.getEEVelWeight() > 0.0) {
+            for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {
+                if (robot_.isStance(ee_idx, t)) {
+                    Eigen::Vector3d residual = robot_.computeEEVel(x_traj[t], ee_idx);  // Target is zero
+                    total_cost += ilqr::EEVelCost(residual, robot_.getEEVelWeight(), getNormParams(norm_params_, "ee_velocity"));
+                }
             }
         }
     }
     
     // Terminal cost
     Eigen::VectorXd x_err_N = x_traj[N_] - x_ref[N_];
-    total_cost += 0.5 * x_err_N.transpose() * robot_.Qf() * x_err_N;
+    total_cost += ilqr::StateCost(x_err_N, robot_.Qf());
     
-    // Add terminal upright cost
-    if (robot_.getUprightWeight() > 0.0) {
-        double qw = x_traj[N_](3);
-        double qx = x_traj[N_](4);
-        double qy = x_traj[N_](5);
-        double qz = x_traj[N_](6);
-        
-        Eigen::Vector3d z_torso(
-            2.0 * (qx*qz + qw*qy),
-            2.0 * (qy*qz - qw*qx),
-            1.0 - 2.0 * (qx*qx + qy*qy)
-        );
-        
-        Eigen::Vector3d z_world(0.0, 0.0, 1.0);
-        Eigen::Vector3d r_upright = z_torso - z_world;
-        total_cost += 0.5 * robot_.getUprightWeight() * r_upright.squaredNorm();
+    // Terminal CoM position cost
+    if (robot_.getCoMWeight() > 0.0) {
+        Eigen::Vector3d residual = robot_.computeCoM(x_traj[N_]) - com_ref_[N_];
+        total_cost += ilqr::CoMPosCost(residual, robot_.getCoMWeight(), getNormParams(norm_params_, "com_position"));
     }
     
-    // Add terminal balance cost
+    // Terminal CoM velocity cost
+    if (robot_.getCoMVelWeight() > 0.0) {
+        Eigen::Vector3d residual = robot_.computeCoMVelocity(x_traj[N_]) - robot_.getCoMVelReference(N_);
+        total_cost += ilqr::CoMVelCost(residual, robot_.getCoMVelWeight(), getNormParams(norm_params_, "com_velocity"));
+    }
+    
+    // Terminal upright cost
+    if (robot_.getUprightWeight() > 0.0) {
+        Eigen::Vector3d residual = computeTorsoZAxis(x_traj[N_]) - Eigen::Vector3d(0, 0, 1);
+        total_cost += ilqr::uprightCost(residual, robot_.getUprightWeight(), getNormParams(norm_params_, "upright"));
+    }
+    
+    // Terminal balance cost
     if (robot_.getBalanceWeight() > 0.0) {
         bool left_stance = robot_.isStance(0, N_);
         bool right_stance = robot_.isStance(1, N_);
         
-        // Skip if no feet in stance
         if (left_stance || right_stance) {
-            // Compute CoM position and velocity from terminal state
             Eigen::Vector3d p_com = robot_.computeCoM(x_traj[N_]);
-            
-            // Extract CoM velocity
-            int nq = robot_.nq();
-            Eigen::Vector3d v_com(x_traj[N_](nq + 0), x_traj[N_](nq + 1), x_traj[N_](nq + 2));
-            
-            double h_com = p_com(2);
-            double g = 9.81;
-            double omega_0 = std::sqrt(h_com / g);
-            
-            // Capture point
-            Eigen::Vector2d p_cp(p_com(0) + v_com(0) * omega_0, p_com(1) + v_com(1) * omega_0);
-            
-            // Compute support center
-            Eigen::Vector2d p_support;
-            if (left_stance && right_stance) {
-                Eigen::Vector3d left_foot = robot_.getEEReference(N_, 0);
-                Eigen::Vector3d right_foot = robot_.getEEReference(N_, 1);
-                p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
-                p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
-            } else if (left_stance) {
-                Eigen::Vector3d left_foot = robot_.getEEReference(N_, 0);
-                p_support(0) = left_foot(0);
-                p_support(1) = left_foot(1);
-            } else {  // right_stance only
-                Eigen::Vector3d right_foot = robot_.getEEReference(N_, 1);
-                p_support(0) = right_foot(0);
-                p_support(1) = right_foot(1);
-            }
-            
-            // Balance cost
-            Eigen::Vector2d residual_balance = p_cp - p_support;
-            total_cost += 0.5 * robot_.getBalanceWeight() * residual_balance.squaredNorm();
+            Eigen::Vector2d p_support = computeSupportCenter(robot_, N_);
+            Eigen::Vector2d p_cp = computeCapturePoint(x_traj[N_], p_com, robot_.nq());
+            Eigen::Vector2d residual = p_cp - p_support;
+            total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
         }
     }
-
+    
+    // Constraint costs
     for(int t = 0; t < N_; ++t){
         total_cost += robot_.constraintCost(x_traj[t], u_traj[t]);
     }

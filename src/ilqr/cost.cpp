@@ -3,175 +3,75 @@
 namespace ilqr {
 
 // ============================================================================
-// Generic Cost Helpers
+// Core Cost Functions - Take residuals only
 // ============================================================================
 
-double buildCostWithNorm(
-    const Eigen::VectorXd& residual,
-    double weight,
-    const NormParams& norm_params
-) {
-    double norm_value = applyNorm(residual, norm_params);
-    return weight * norm_value;
+// State cost: quadratic only (LQR design)
+double StateCost(const Eigen::VectorXd& x_err, const Eigen::MatrixXd& Q) {
+    return 0.5 * x_err.transpose() * Q * x_err;
 }
 
-::casadi::SX buildCostWithNorm(
-    const ::casadi::SX& residual,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX norm_value = applyNorm(residual, norm_params);
-    return weight * norm_value;
+// Control cost: quadratic only (LQR design)
+double ControlCost(const Eigen::VectorXd& u_err, const Eigen::MatrixXd& R) {
+    return 0.5 * u_err.transpose() * R * u_err;
 }
 
-// ============================================================================
-// CoM Position Cost
-// ============================================================================
-
-double buildCoMPositionCost(
-    const Eigen::Vector3d& com_pos,
-    const Eigen::Vector3d& com_ref,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector3d residual = com_pos - com_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+// CoM position cost
+double CoMPosCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-::casadi::SX buildCoMPositionCost(
-    const ::casadi::SX& com_pos,
-    const ::casadi::SX& com_ref,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX residual = com_pos - com_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+// CoM velocity cost
+double CoMVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-// ============================================================================
-// CoM Velocity Cost
-// ============================================================================
-
-double buildCoMVelocityCost(
-    const Eigen::Vector3d& com_vel,
-    const Eigen::Vector3d& com_vel_ref,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector3d residual = com_vel - com_vel_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+// End-effector position cost
+double EEPosCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-::casadi::SX buildCoMVelocityCost(
-    const ::casadi::SX& com_vel,
-    const ::casadi::SX& com_vel_ref,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX residual = com_vel - com_vel_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+// End-effector velocity cost
+double EEVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
+}
+
+// Upright cost: orientation tracking (0.5 factor for original behavior)
+double uprightCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+    return 0.5 * weight * applyNorm(residual, norm);
+}
+
+// Balance cost: capture point stability (0.5 factor for original behavior)
+double balanceCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm) {
+    return 0.5 * weight * applyNorm(residual, norm);
 }
 
 // ============================================================================
-// End-Effector Position Cost
+// CasADi Symbolic Versions (for derivatives)
 // ============================================================================
 
-double buildEEPositionCost(
-    const Eigen::Vector3d& ee_pos,
-    const Eigen::Vector3d& ee_ref,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector3d residual = ee_pos - ee_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+::casadi::SX CoMPosCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-::casadi::SX buildEEPositionCost(
-    const ::casadi::SX& ee_pos,
-    const ::casadi::SX& ee_ref,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX residual = ee_pos - ee_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+::casadi::SX CoMVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-// ============================================================================
-// End-Effector Velocity Cost
-// ============================================================================
-
-double buildEEVelocityCost(
-    const Eigen::Vector3d& ee_vel,
-    const Eigen::Vector3d& ee_vel_ref,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector3d residual = ee_vel - ee_vel_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+::casadi::SX EEPosCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-::casadi::SX buildEEVelocityCost(
-    const ::casadi::SX& ee_vel,
-    const ::casadi::SX& ee_vel_ref,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX residual = ee_vel - ee_vel_ref;
-    return buildCostWithNorm(residual, weight, norm_params);
+::casadi::SX EEVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
 }
 
-// ============================================================================
-// Upright Cost
-// Note: Uses 0.5 factor to match original implementation
-// ============================================================================
-
-double buildUprightCost(
-    const Eigen::Vector3d& torso_z,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector3d up(0.0, 0.0, 1.0);
-    Eigen::Vector3d residual = torso_z - up;
-    double norm_value = applyNorm(residual, norm_params);
-    return 0.5 * weight * norm_value;
+::casadi::SX uprightCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return 0.5 * weight * applyNorm(residual, norm);
 }
 
-::casadi::SX buildUprightCost(
-    const ::casadi::SX& torso_z,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX up = ::casadi::SX::vertcat({0.0, 0.0, 1.0});
-    ::casadi::SX residual = torso_z - up;
-    ::casadi::SX norm_value = applyNorm(residual, norm_params);
-    return 0.5 * weight * norm_value;
-}
-
-// ============================================================================
-// Balance Cost
-// Note: Uses 0.5 factor to match original implementation
-// ============================================================================
-
-double buildBalanceCost(
-    const Eigen::Vector2d& com_xy,
-    const Eigen::Vector2d& support_center_xy,
-    double weight,
-    const NormParams& norm_params
-) {
-    Eigen::Vector2d residual = com_xy - support_center_xy;
-    double norm_value = applyNorm(residual, norm_params);
-    return 0.5 * weight * norm_value;
-}
-
-::casadi::SX buildBalanceCost(
-    const ::casadi::SX& com_xy,
-    const ::casadi::SX& support_center_xy,
-    const ::casadi::SX& weight,
-    const NormParams& norm_params
-) {
-    ::casadi::SX residual = com_xy - support_center_xy;
-    ::casadi::SX norm_value = applyNorm(residual, norm_params);
-    return 0.5 * weight * norm_value;
+::casadi::SX balanceCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return 0.5 * weight * applyNorm(residual, norm);
 }
 
 } // namespace ilqr
