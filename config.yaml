@@ -120,10 +120,10 @@ mpc:
     
     # Trust region thresholds for regularization adaptation (aligned with MJPC)
     trust_region_good: 0.5                 # Good improvement threshold (MJPC: z > 0.5)
-    trust_region_poor: 0.1                 # Poor improvement threshold (MJPC: z < 0.1)
+    trust_region_poor: 0.25                 # Poor improvement threshold (MJPC: z < 0.1)
     
     # Line search parameters (log-scale, DeepMind MJPC style)
-    num_line_search_steps: 20              # Number of line search candidates (MJPC default: 10)
+    num_line_search_steps: 30              # Number of line search candidates (MJPC default: 10)
     min_linesearch_step: 1.0e-3            # Minimum line search step size (MJPC default: 1e-3)
     line_search_tolerance: 1.0e-6          # Line search convergence tolerance
     

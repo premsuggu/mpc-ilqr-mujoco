@@ -358,6 +358,7 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     
     // Generate log-scaled line search alphas (DeepMind MJPC style)
     // Formula: alpha[i] = exp(log(min) + i * step) where step = (log(max) - log(min)) / (num_steps - 1)
+    // Note: Generated in increasing order, but we'll iterate in REVERSE to try largest steps first
     std::vector<double> alphas(num_line_search_steps_);
     if (num_line_search_steps_ > 1) {
         double log_max = std::log(1.0);
@@ -371,7 +372,9 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
     }
     
     // Line search with log-scaled alphas
-    for (double alpha : alphas) {
+    // Standard line search: start aggressive (alpha=1.0), back off if needed
+    for (int i = num_line_search_steps_ - 1; i >= 0; --i) {
+        double alpha = alphas[i];
         // Forward pass with current alpha
         std::vector<Eigen::VectorXd> x_new(N_ + 1);
         std::vector<Eigen::VectorXd> u_new(N_);

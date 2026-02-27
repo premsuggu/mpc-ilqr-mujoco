@@ -9,6 +9,8 @@ A cross-platform implementation of Model Predictive Control for humanoid robots 
 
 - **Real-time MPC**: 50Hz control loop with ~5-8 seconds per optimization step
 - **iLQR Optimization**: Efficient iterative Linear Quadratic Regulator solver with warm-start capability
+- **Log-Scale Line Search**: Dynamic alpha generation (DeepMind MJPC style) for aggressive stepping
+- **Robust Cost Functions**: 6 configurable norm types (Quadratic, L22, L2, Cosh, SmoothAbs2Loss, Rectify)
 - **Symbolic Differentiation**: Fast analytical derivatives using Pinocchio + CasADi
 - **MuJoCo Integration**: Physics simulation with contact modeling
 - **Cross-platform**: Works on Linux, macOS, and Windows
@@ -217,9 +219,10 @@ Final:    407.26 MB
 **Timing Breakdown:**
 - **MPC_stepOnce**: Total time for one MPC control step (including all iLQR iterations)
 - **iLQR_linearization**: Computing dynamics Jacobians A_t, B_t 
-  - This is the main bottleneck due to finite difference computations in MuJoCo
-- **iLQR_costQuadratics**: Computing Q, R cost matrices
-- **iLQR_lineSearch**: Forward rollout to find optimal step size
+  - Uses symbolic differentiation (CasADi + Pinocchio) for analytical derivatives
+- **iLQR_costQuadratics**: Computing Q, R cost matrices with norm derivatives
+- **iLQR_backwardPass**: Computing feedback gains via Riccati recursion
+- **iLQR_lineSearch**: Forward rollout to find optimal step size (log-scale alphas)
 - **Calls**: Number of times each function was called
 
 **Memory Metrics:**
@@ -245,6 +248,8 @@ mujoco_mpc/
 │   │   ├── ilqr.hpp              # iLQR solver algorithm
 │   │   ├── mpc.hpp               # MPC orchestrator with warm-start
 │   │   ├── derivatives.hpp       # Symbolic differentiation (Pinocchio+CasADi)
+│   │   ├── cost.hpp              # Residual-based cost function interface
+│   │   ├── norm.hpp              # Robust norm types (6 types: Quadratic, L22, L2, Cosh, SmoothAbs2Loss, Rectify)
 │   │   └── config.hpp            # YAML configuration loader
 │   └── nlp/                      # NLP MPC implementation (best practices)
 │       ├── nlp_config.hpp        # Configuration structs (weights, options)
@@ -258,6 +263,8 @@ mujoco_mpc/
 │   │   ├── ilqr.cpp              # iLQR optimization algorithm
 │   │   ├── mpc.cpp               # MPC control loop
 │   │   ├── derivatives.cpp       # CoM + end-effector derivatives
+│   │   ├── cost.cpp              # Cost residual computation (8 cost terms)
+│   │   ├── norm.cpp              # Norm function implementations (numerical + symbolic)
 │   │   └── config.cpp            # Configuration parser
 │   └── nlp/                      # NLP implementation files
 │       ├── nlp_utils.cpp         # Utility implementations
@@ -288,25 +295,49 @@ mujoco_mpc/
 ## 🧮 Algorithm Details
 
 ### **iLQR Optimization**
-- **Method**: Iterative Linear Quadratic Regulator with line search
-- **Iterations**: 1 in most of the cases. 
+- **Method**: Iterative Linear Quadratic Regulator with log-scale line search
+- **Iterations**: 1 in most cases (warm-start from previous solution)
 - **Convergence**: Stops when cost improvement < 1e-4
-- **Regularization**: Adaptive λ ∈ [1e-6, 1e-3]
+- **Regularization**: Adaptive λ ∈ [1e-6, 1e6] (control regularization on Quu)
+- **Line Search**: Log-scale from 1.0 to min_step (default: 10 steps, min=1e-3)
+  - Alphas generated dynamically: α = exp(log(min) + i·Δ) for i = 0...N-1
+  - Tried in descending order (1.0 → min) for aggressive stepping
+  - First improvement accepted (Armijo backtracking)
 
 ### **Cost Function**
+Residual-based cost formulation with configurable robust norms:
 ```
-J = Σ(||x - x_ref||²_Q + ||u||²_R) + ||x_N - x_ref_N||²_Qf
-    + W_com * ||CoM - CoM_ref||²
-    + W_foot * Σ||foot_pos - foot_ref||²
+J = Σ_t [ W_state·ρ(r_state) + W_ctrl·ρ(r_ctrl) 
+        + W_com_pos·ρ(r_com_pos) + W_com_vel·ρ(r_com_vel)
+        + W_ee_pos·ρ(r_ee_pos) + W_ee_vel·ρ(r_ee_vel)
+        + W_upright·ρ(r_upright) + W_balance·ρ(r_balance) ]
 ```
+
+**Supported Norm Types** (ρ: ℝⁿ → ℝ):
+- **Quadratic**: `0.5 · rᵀr` (standard least squares)
+- **L22**: `p² · (√(rᵀr/p² + 1) - 1)` (smoothed L2)
+- **L2**: `p · √(rᵀr)` (linear growth for outliers)
+- **Cosh**: `p² · (cosh(√(rᵀr)/p) - 1)` (smooth near zero)
+- **SmoothAbs2Loss**: Smooth transition from quadratic to linear
+- **Rectify**: `p · max(0, r)` (one-sided penalty)
+
+Each cost term has configurable norm type and parameters (p, q) via `config.yaml`.
 
 ### **Dynamics Linearization**
-- **Method**: Finite differences using MuJoCo's `mj_forward`
-- **Jacobians**: A_t (51×51), B_t (51×19) computed at each timestep
+- **Method**: Symbolic differentiation with CasADi + Pinocchio
+- **Jacobians**: A_t (51×51), B_t (51×19) computed analytically
+- **Cost Derivatives**: Symbolic computation of gradients and Hessians
+  - State/Control costs: Analytical derivatives through norm functions
+  - CoM costs: Pinocchio for CoM Jacobian/Hessian w.r.t. q
+  - End-effector costs: CasADi automatic differentiation
+- **Advantage**: More accurate and faster than finite differences
 
-### **Symbolic Derivatives**
-- **CoM Jacobian & Hessian**: Pinocchio analytical computation
-- **End-effector Jacobian & Hessian**: CasADi automatic differentiation
+### **Symbolic Derivatives Architecture**
+The `symDerivatives` class provides analytical derivatives for all cost terms:
+- **CoM Derivatives**: Pinocchio's `getJacobianComFromRootJoint()` and `computeJointKinematicHessians()`
+- **End-Effector Derivatives**: CasADi symbolic expressions with automatic differentiation
+- **Norm Derivatives**: Analytical gradients/Hessians for all 6 robust norm types
+- **Cost Linearization**: Symbolic lx, lu, lxx, luu, lux computed without numerical approximation
 
 <details>
 <summary><h2>🔬 NLP-Based MPC Pipeline (Previous Implementation)</h2></summary>
@@ -389,17 +420,64 @@ All MPC parameters are defined in `config.yaml`:
 
 ```yaml
 mpc:
-  horizon: 25              # Prediction horizon (25 steps = 0.5 seconds)
+  horizon: 23              # Prediction horizon (23 steps = 0.46 seconds at 50 Hz)
   dt: 0.02                 # MPC timestep (50 Hz)
-  sim_steps: 15            # Number of simulation steps to run
+  sim_steps: 50            # Number of simulation steps to run
   
   cost_weights:
-    Q_position_z: 2000.0   # Height tracking (critical for balance)
-    Q_quat_xyz: [500, 500, 300]  # Orientation control (roll, pitch, yaw)
-    Q_joint_pos: 80.0      # Joint position tracking
-    R_control: 0.01        # Control effort penalty
-    W_com: 500.0           # Center of Mass tracking weight
-    W_foot: 500.0          # Foot position tracking weight
+    # State tracking weights (exact DeepMind MJPC values)
+    Q_position_z: 5.0      # Height tracking
+    Q_quat_xyz: [5.0, 5.0, 5.0]  # Orientation control
+    Q_joint_pos: 0.025     # Joint posture (small regularization)
+    R_control: 0.1         # Control effort penalty
+    W_com_pos: 5.0         # CoM position/balance (capture point)
+    W_com_vel: 0.625       # CoM velocity tracking
+    W_foot: 1.0            # Foot position tracking
+    W_foot_vel: 1.0        # Foot velocity tracking
+    W_upright: 5.0         # Torso upright orientation
+    w_balance: 5.0         # Balance cost weight
+  
+  # Norm types for robust cost functions (DeepMind MJPC exact values)
+  # Available: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7), rectify (8)
+  norm_types:
+    balance:               # L22 norm (smooth near zero, quadratic growth)
+      type: 1
+      p: 0.02
+      q: 4.0
+    upright:               # L2 norm (linear growth for outliers)
+      type: 2
+      p: 0.01
+    com_velocity:          # SmoothAbs2Loss (smooth quadratic-to-linear transition)
+      type: 7
+      p: 0.2
+      q: 4.0
+    com_position:          # SmoothAbs2Loss
+      type: 7
+      p: 0.1
+      q: 4.0
+    ee_position_foot_left:  # Rectify (one-sided penalty)
+      type: 8
+      p: 0.05
+    ee_velocity_foot_left:  # SmoothAbs2Loss
+      type: 7
+      p: 0.2
+      q: 4.0
+  
+  # iLQR solver settings
+  ilqr_settings:
+    max_iterations: 10                # Maximum iLQR iterations
+    tolerance: 1.0e-4                 # Convergence tolerance
+    initial_regularization: 1.0e-3    # Starting lambda value
+    reg_min: 1.0e-6                   # Min regularization
+    reg_max: 1.0e6                    # Max regularization
+    reg_increase_factor: 10.0         # Lambda *= factor (poor improvement)
+    reg_decrease_factor: 10.0         # Lambda /= factor (good improvement)
+    trust_region_good: 0.5            # Improvement ratio threshold for "good"
+    trust_region_poor: 0.25           # Improvement ratio threshold for "poor"
+    
+    # Log-scale line search (DeepMind MJPC style)
+    num_line_search_steps: 30         # Number of alpha candidates
+    min_linesearch_step: 1.0e-3       # Minimum step size (log-scale from 1.0 to min)
 ```
 
 
