@@ -38,79 +38,27 @@ public:
     symDerivatives(const std::string& urdf_path, bool floating_base = true);
 
     /**
-     * @brief Compute end-effector position gradient (cached, fast evaluation)
+     * @brief Compute height (torso z) cost gradient (cached, fast evaluation)
      * @param x Full state vector [q, v]
-     * @param target_pos Target position [x, y, z]  
-     * @param frame_name End-effector frame name
+     * @param goal_z Target torso z height
      * @param weight Cost weight
      * @return Gradient vector w.r.t. full state [q, v]
      */
-    Eigen::VectorXd EEposGrad(const Eigen::VectorXd& x, 
-                              const Eigen::Vector3d& target_pos,
-                              const std::string& frame_name,
-                              double weight = 1.0);
+    Eigen::VectorXd HeightGrad(const Eigen::VectorXd& x,
+                               double goal_z,
+                               double weight = 1.0);
 
     /**
-     * @brief Compute end-effector position hessian (cached, fast evaluation)
+     * @brief Compute height (torso z) cost hessian (cached, fast evaluation)
      * @param x Full state vector [q, v]
-     * @param target_pos Target position [x, y, z]
-     * @param frame_name End-effector frame name  
+     * @param goal_z Target torso z height
      * @param weight Cost weight
      * @return Hessian matrix w.r.t. full state [q, v]
      */
-    Eigen::MatrixXd EEposHess(const Eigen::VectorXd& x,
-                              const Eigen::Vector3d& target_pos,
-                              const std::string& frame_name,
-                              double weight = 1.0);
-                              
-    /**
-     * @brief Compute center-of-mass position gradient (cached, fast evaluation)
-     * @param x Full state vector [q, v]
-     * @param target_com Target CoM position [x, y, z]
-     * @param weight Cost weight
-     * @return Gradient vector w.r.t. full state [q, v]
-     */
-    Eigen::VectorXd CoMGrad(const Eigen::VectorXd& x,
-                            const Eigen::Vector3d& target_com,
-                            double weight = 1.0);
+    Eigen::MatrixXd HeightHess(const Eigen::VectorXd& x,
+                               double goal_z,
+                               double weight = 1.0);
 
-    /**
-     * @brief Compute center-of-mass position hessian (cached, fast evaluation)  
-     * @param x Full state vector [q, v]
-     * @param target_com Target CoM position [x, y, z]
-     * @param weight Cost weight
-     * @return Hessian matrix w.r.t. full state [q, v]
-     */
-    Eigen::MatrixXd CoMHess(const Eigen::VectorXd& x,
-                            const Eigen::Vector3d& target_com,
-                            double weight = 1.0);
-
-    /**
-     * @brief Compute end-effector velocity gradient (cached, fast evaluation)
-     * @param x Full state vector [q, v]
-     * @param target_vel Target velocity [vx, vy, vz]
-     * @param frame_name End-effector frame name
-     * @param weight Cost weight
-     * @return Gradient vector w.r.t. full state [q, v]
-     */
-    Eigen::VectorXd EEvelGrad(const Eigen::VectorXd& x,
-                              const Eigen::Vector3d& target_vel,
-                              const std::string& frame_name,
-                              double weight = 1.0);
-
-    /**
-     * @brief Compute end-effector velocity hessian (cached, fast evaluation)
-     * @param x Full state vector [q, v]
-     * @param target_vel Target velocity [vx, vy, vz]
-     * @param frame_name End-effector frame name
-     * @param weight Cost weight
-     * @return Hessian matrix w.r.t. full state [q, v]
-     */
-    Eigen::MatrixXd EEvelHess(const Eigen::VectorXd& x,
-                              const Eigen::Vector3d& target_vel,
-                              const std::string& frame_name,
-                              double weight = 1.0);
-    
     /**
      * @brief Compute center-of-mass velocity gradient (cached, fast evaluation)
      * @param x Full state vector [q, v]
@@ -162,12 +110,6 @@ public:
                                 double w_balance);
 
     /**
-     * @brief Pre-build functions for specific end-effector frame
-     * @param frame_name Frame to prepare functions for
-     */
-    void prepareFrame(const std::string& frame_name);
-
-    /**
      * @brief Get configuration DOF
      */
     int nq() const { return model_.nq; }
@@ -200,17 +142,10 @@ private:
     pinocchio::DataTpl<ADScalar> ad_data_;
     ::casadi::SX x_sym_;  // Full state [q, v]
     
-    // Pre-compiled function caches for different cost types
-    std::map<std::string, ::casadi::Function> ee_pos_fns_;     // End-effector position functions
-    std::map<std::string, ::casadi::Function> ee_grad_fns_;    // EE position gradient functions  
-    std::map<std::string, ::casadi::Function> ee_hess_fns_;    // EE position Hessian functions
-    std::map<std::string, ::casadi::Function> ee_vel_grad_fns_; // EE velocity gradient functions
-    std::map<std::string, ::casadi::Function> ee_vel_hess_fns_; // EE velocity Hessian functions
-    
-    // CoM cost functions (single instance)
-    ::casadi::Function com_grad_fn_;     // CoM gradient function
-    ::casadi::Function com_hess_fn_;     // CoM Hessian function
-    bool com_functions_built_;
+    // Height cost functions (single instance)
+    ::casadi::Function height_grad_fn_;     // Height gradient function
+    ::casadi::Function height_hess_fn_;     // Height Hessian function
+    bool height_functions_built_;
     
     // CoM velocity cost functions (single instance, separate from position)
     ::casadi::Function com_vel_grad_fn_;     // CoM velocity gradient function
@@ -236,14 +171,8 @@ private:
     // Build all symbolic functions once in constructor
     void buildSymbolicFunctions();
     
-    // Helper to build end-effector position functions for a specific frame
-    void buildEEFunctions(const std::string& frame_name);
-    
-    // Helper to build end-effector velocity functions for a specific frame
-    void buildEEVelFunctions(const std::string& frame_name);
-    
-    // Helper to build CoM functions (once)
-    void buildCoMFunctions();
+    // Helper to build height functions (once)
+    void buildHeightFunctions();
     
     // Helper to build CoM velocity functions (once, separate from position)
     void buildCoMVelFunctions();
@@ -255,21 +184,11 @@ private:
     void buildBalanceFunctions();
     
     // Symbolic cost expression helpers 
-    ::casadi::SX symCoMPos(const ::casadi::SX& target_com,
+    ::casadi::SX symHeight(const ::casadi::SX& target_z,
                            const ::casadi::SX& weight);
     
     ::casadi::SX symCoMVel(const ::casadi::SX& target_com_vel,
                            const ::casadi::SX& weight);
-    
-    ::casadi::SX symEEPos(const ::casadi::SX& target_pos,
-                          const ::casadi::SX& weight,
-                          pinocchio::FrameIndex frame_id,
-                          const std::string& frame_name);
-    
-    ::casadi::SX symEEVel(const ::casadi::SX& target_vel,
-                          const ::casadi::SX& weight,
-                          pinocchio::FrameIndex frame_id,
-                          const std::string& frame_name);
     
     ::casadi::SX symUpright(const ::casadi::SX& weight);
     

@@ -17,23 +17,15 @@ double ControlCost(const Eigen::VectorXd& u_err, const Eigen::MatrixXd& R) {
     return 0.5 * u_err.transpose() * R * u_err;
 }
 
-// CoM position cost
-double CoMPosCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
-    return weight * applyNorm(residual, norm);
+// Height cost: scalar residual (torso z - goal z), DeepMind "Height"
+double HeightCost(double residual, double weight, const NormParams& norm) {
+    Eigen::VectorXd r(1);
+    r(0) = residual;
+    return weight * applyNorm(r, norm);
 }
 
 // CoM velocity cost
 double CoMVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
-    return weight * applyNorm(residual, norm);
-}
-
-// End-effector position cost
-double EEPosCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
-    return weight * applyNorm(residual, norm);
-}
-
-// End-effector velocity cost
-double EEVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
     return weight * applyNorm(residual, norm);
 }
 
@@ -51,19 +43,11 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
 // CasADi Symbolic Versions (for derivatives)
 // ============================================================================
 
-::casadi::SX CoMPosCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+::casadi::SX HeightCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
     return weight * applyNorm(residual, norm);
 }
 
 ::casadi::SX CoMVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
-    return weight * applyNorm(residual, norm);
-}
-
-::casadi::SX EEPosCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
-    return weight * applyNorm(residual, norm);
-}
-
-::casadi::SX EEVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
     return weight * applyNorm(residual, norm);
 }
 

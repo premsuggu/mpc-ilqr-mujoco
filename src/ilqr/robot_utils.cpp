@@ -12,7 +12,7 @@
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
-      nx_(0), nu_(0), dt_(0.01), w_com_(0.0), w_com_vel_(0.0), w_ee_pos_(0.0), w_ee_vel_(0.0), 
+      nx_(0), nu_(0), dt_(0.01), w_height_(0.0), w_com_vel_(0.0),
       w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0), w_balance_(0.0),
       linearization_epsilon_(1e-4) { 
 }
@@ -204,18 +204,18 @@ double RobotUtils::stageCost(int t, const Eigen::VectorXd& x, const Eigen::Vecto
         
         double tracking_cost = 0.5 * (x_err.transpose() * Q_ * x_err + u_err.transpose() * R_ * u_err)(0, 0);
         
-        // Add CoM tracking cost
-        double com_cost = 0.0;
-        if (w_com_ > 0.0 && !com_ref_full_.empty()) {
+        // Add height tracking cost
+        double height_cost = 0.0;
+        if (w_height_ > 0.0 && !height_ref_full_.empty()) {
             Eigen::Vector3d com_current = computeCoM(x);
-            int com_ref_idx = std::min(t, (int)com_ref_full_.size() - 1);
-            Eigen::Vector3d com_err = com_current - com_ref_full_[com_ref_idx];
-            com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+            int height_ref_idx = std::min(t, (int)height_ref_full_.size() - 1);
+            Eigen::Vector3d com_err = com_current - height_ref_full_[height_ref_idx];
+            height_cost = 0.5 * w_height_ * com_err.squaredNorm();
         }
         
         double constraint_cost_val = constraintCost(x, u);
         
-        return tracking_cost + com_cost + constraint_cost_val;
+        return tracking_cost + height_cost + constraint_cost_val;
     }
     
     Eigen::VectorXd x_err = x - x_ref_full_[t];
@@ -223,17 +223,17 @@ double RobotUtils::stageCost(int t, const Eigen::VectorXd& x, const Eigen::Vecto
     
     double tracking_cost = 0.5 * (x_err.transpose() * Q_ * x_err + u_err.transpose() * R_ * u_err)(0, 0);
     
-    // Add CoM tracking cost
-    double com_cost = 0.0;
-    if (w_com_ > 0.0 && t < (int)com_ref_full_.size()) {
+    // Add height tracking cost
+    double height_cost = 0.0;
+    if (w_height_ > 0.0 && t < (int)height_ref_full_.size()) {
         Eigen::Vector3d com_current = computeCoM(x);
-        Eigen::Vector3d com_err = com_current - com_ref_full_[t];
-        com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+        Eigen::Vector3d com_err = com_current - height_ref_full_[t];
+        height_cost = 0.5 * w_height_ * com_err.squaredNorm();
     }
     
     double constraint_cost_val = constraintCost(x, u);
     
-    return tracking_cost + com_cost + constraint_cost_val;
+    return tracking_cost + height_cost + constraint_cost_val;
 }
 
 double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
@@ -245,12 +245,12 @@ double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
     Eigen::VectorXd x_err = x - x_ref_full_.back();
     double tracking_cost = 0.5 * (x_err.transpose() * Qf_ * x_err)(0, 0);
     
-    // Add terminal CoM tracking cost
-    double com_cost = 0.0;
-    if (w_com_ > 0.0 && !com_ref_full_.empty()) {
+    // Add terminal height tracking cost
+    double height_cost = 0.0;
+    if (w_height_ > 0.0 && !height_ref_full_.empty()) {
         Eigen::Vector3d com_current = computeCoM(x);
-        Eigen::Vector3d com_err = com_current - com_ref_full_.back();
-        com_cost = 0.5 * w_com_ * com_err.squaredNorm();
+        Eigen::Vector3d com_err = com_current - height_ref_full_.back();
+        height_cost = 0.5 * w_height_ * com_err.squaredNorm();
     }
     
     // Terminal constraint cost (only joint limits, no control at terminal state)
@@ -281,7 +281,7 @@ double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
         }
     }
     
-    return tracking_cost + com_cost + constraint_cost_val;
+    return tracking_cost + height_cost + constraint_cost_val;
 }
 
 void RobotUtils::setCostWeights(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& R, 
@@ -329,7 +329,7 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
     
     x_ref_full_.clear();
     u_ref_full_.clear();
-    com_ref_full_.clear();
+    height_ref_full_.clear();
     com_vel_ref_full_.clear();
     ee_pos_ref_full_.clear();
     ee_vel_ref_full_.clear();
@@ -411,7 +411,7 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
         for (int i = 0; i < 3; ++i) {
             com_ref(i) = temp_data->subtree_com[3 + i];
         }
-        com_ref_full_.push_back(com_ref);
+        height_ref_full_.push_back(com_ref);
         
         // CoM velocity reference: use Jacobian method (SEPARATE from position)
         std::vector<mjtNum> jac_com(3 * model_->nv);
@@ -456,18 +456,18 @@ bool RobotUtils::loadReferences(const std::string& q_ref_path, const std::string
 void RobotUtils::getReferenceWindow(int t0, int N, 
                                     std::vector<Eigen::VectorXd>& x_ref_window,
                                     std::vector<Eigen::VectorXd>& u_ref_window,
-                                    std::vector<Eigen::Vector3d>& com_ref_window) const {
+                                    std::vector<Eigen::Vector3d>& height_ref_window) const {
     x_ref_window.clear();
     u_ref_window.clear();
-    com_ref_window.clear();
+    height_ref_window.clear();
     
     for (int i = 0; i <= N; ++i) {  // N+1 states, N controls, N+1 CoM references
         int ref_idx = std::min(t0 + i, (int)x_ref_full_.size() - 1);
         x_ref_window.push_back(x_ref_full_[ref_idx]);
         
-        // Add CoM reference for this timestep
-        int com_ref_idx = std::min(t0 + i, (int)com_ref_full_.size() - 1);
-        com_ref_window.push_back(com_ref_full_[com_ref_idx]);
+        // Add height reference for this timestep
+        int height_ref_idx = std::min(t0 + i, (int)height_ref_full_.size() - 1);
+        height_ref_window.push_back(height_ref_full_[height_ref_idx]);
         
         if (i < N) {  // Only N controls
             int u_ref_idx = std::min(t0 + i, (int)u_ref_full_.size() - 1);

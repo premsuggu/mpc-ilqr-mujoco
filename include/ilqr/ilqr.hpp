@@ -51,7 +51,7 @@ public:
     bool solve(const Eigen::VectorXd& x0,
                const std::vector<Eigen::VectorXd>& x_ref,
                const std::vector<Eigen::VectorXd>& u_ref,
-               const std::vector<Eigen::Vector3d>& com_ref,
+               const std::vector<Eigen::Vector3d>& height_ref,
                double& cost_out);
 
     // Access results
@@ -64,7 +64,7 @@ public:
     void initializeWithReference(const Eigen::VectorXd& x0,
                                 const std::vector<Eigen::VectorXd>& x_ref,
                                 const std::vector<Eigen::VectorXd>& u_ref,
-                                const std::vector<Eigen::Vector3d>& com_ref,
+                                const std::vector<Eigen::Vector3d>& height_ref,
                                 const std::vector<Eigen::VectorXd>* prev_xbar = nullptr,
                                 const std::vector<Eigen::VectorXd>* prev_ubar = nullptr);
 
@@ -111,7 +111,7 @@ private:
 
     // Reference storage
     std::vector<Eigen::VectorXd> x_ref_, u_ref_;
-    std::vector<Eigen::Vector3d> com_ref_;  // CoM reference trajectory
+    std::vector<Eigen::Vector3d> height_ref_;  // Height (torso z) reference trajectory
 
     // Value function
     Eigen::VectorXd VxN_;     // Terminal gradient
@@ -132,10 +132,8 @@ private:
                                double& new_cost);
     
     // Symbolic cost derivatives
-    void addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref);
+    void addHeightCostDerivatives(int t, double goal_z);
     void addCoMVelCostDerivatives(int t);  // SEPARATE velocity tracking
-    void addEEPosCostDerivatives(int t);
-    void addEEVelCostDerivatives(int t);
     void addUprightCostDerivatives(int t);
     void addBalanceCostDerivatives(int t);
 

@@ -59,14 +59,10 @@ public:
     double terminalCost(const Eigen::VectorXd& x) const;
     void setCostWeights(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& R, 
                         const Eigen::MatrixXd& Qf);
-    void setCoMWeight(double w_com) { w_com_ = w_com; }
-    double getCoMWeight() const { return w_com_; }
+    void setHeightWeight(double w) { w_height_ = w; }
+    double getHeightWeight() const { return w_height_; }
     void setCoMVelWeight(double w) { w_com_vel_ = w; }
     double getCoMVelWeight() const { return w_com_vel_; }
-    void setEEPosWeight(double w_ee) { w_ee_pos_ = w_ee; }
-    double getEEPosWeight() const { return w_ee_pos_; }
-    void setEEVelWeight(double w_ee_vel) { w_ee_vel_ = w_ee_vel; }
-    double getEEVelWeight() const { return w_ee_vel_; }
     double getUprightWeight() const { return w_upright_; }
     void setUprightWeight(double w) { w_upright_ = w; }
     void setBalanceWeight(double w) { w_balance_ = w; }
@@ -87,7 +83,7 @@ public:
     void getReferenceWindow(int t0, int N, 
                             std::vector<Eigen::VectorXd>& x_ref_window,
                             std::vector<Eigen::VectorXd>& u_ref_window,
-                            std::vector<Eigen::Vector3d>& com_ref_window) const;
+                            std::vector<Eigen::Vector3d>& height_ref_window) const;
     
     // Contact schedule
     bool loadContactSchedule(const std::string& contact_path);
@@ -111,7 +107,7 @@ public:
     // Public reference trajectories for Rerun visualization
     std::vector<Eigen::VectorXd> x_ref_full_;
     std::vector<Eigen::VectorXd> u_ref_full_;
-    std::vector<Eigen::Vector3d> com_ref_full_;
+    std::vector<Eigen::Vector3d> height_ref_full_;
     std::vector<Eigen::Vector3d> com_vel_ref_full_;
     std::vector<std::vector<Eigen::Vector3d>> ee_pos_ref_full_;
     std::vector<std::vector<Eigen::Vector3d>> ee_vel_ref_full_;
@@ -129,9 +125,8 @@ private:
 
     // Cost matrices
     Eigen::MatrixXd Q_, R_, Qf_;
-    double w_com_;  // CoM tracking weight
+    double w_height_;  // Height (torso z) tracking weight
     double w_com_vel_;  // CoM velocity tracking weight (separate from position)
-    double w_ee_pos_, w_ee_vel_;
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
     

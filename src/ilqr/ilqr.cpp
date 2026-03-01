@@ -59,12 +59,12 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
 void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
                                   const std::vector<Eigen::VectorXd>& x_ref,
                                   const std::vector<Eigen::VectorXd>& u_ref,
-                                  const std::vector<Eigen::Vector3d>& com_ref,
+                                  const std::vector<Eigen::Vector3d>& height_ref,
                                   const std::vector<Eigen::VectorXd>* prev_xbar,
                                   const std::vector<Eigen::VectorXd>* prev_ubar) {
     
-    // Store CoM reference
-    com_ref_ = com_ref;
+    // Store height reference
+    height_ref_ = height_ref;
     
     xbar_[0] = x0;
     
@@ -159,24 +159,14 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         luu_[t] = robot_.R();
         lxu_[t] = Eigen::MatrixXd::Zero(robot_.nx(), robot_.nu());
         
-        // ADD CoM TRACKING DERIVATIVES if weight > 0
-        if (robot_.getCoMWeight() > 0.0) {
-            addCoMCostDerivatives(t, com_ref_[t]);
+        // ADD HEIGHT TRACKING DERIVATIVES if weight > 0
+        if (robot_.getHeightWeight() > 0.0) {
+            addHeightCostDerivatives(t, height_ref_[t](2));
         }
         
         // ADD CoM VELOCITY TRACKING DERIVATIVES if weight > 0 (SEPARATE from position)
         if (robot_.getCoMVelWeight() > 0.0) {
             addCoMVelCostDerivatives(t);
-        }
-        
-        // ADD EE POSITION TRACKING DERIVATIVES if weight > 0
-        if (robot_.getEEPosWeight() > 0.0) {
-            addEEPosCostDerivatives(t);
-        }
-        
-        // ADD EE VELOCITY TRACKING DERIVATIVES if weight > 0
-        if (robot_.getEEVelWeight() > 0.0) {
-            addEEVelCostDerivatives(t);
         }
         
         // ADD UPRIGHT COST DERIVATIVES if weight > 0
@@ -213,19 +203,9 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     lx_[N_] = robot_.Qf() * x_err_N;
     lxx_[N_] = robot_.Qf();
     
-    // ADD TERMINAL CoM TRACKING DERIVATIVES if weight > 0
-    if (robot_.getCoMWeight() > 0.0) {
-        addCoMCostDerivatives(N_, com_ref_[N_]);
-    }
-    
-    // ADD TERMINAL EE POSITION TRACKING DERIVATIVES if weight > 0
-    if (robot_.getEEPosWeight() > 0.0) {
-        addEEPosCostDerivatives(N_);
-    }
-    
-    // ADD TERMINAL EE VELOCITY TRACKING DERIVATIVES if weight > 0
-    if (robot_.getEEVelWeight() > 0.0) {
-        addEEVelCostDerivatives(N_);
+    // ADD TERMINAL HEIGHT TRACKING DERIVATIVES if weight > 0
+    if (robot_.getHeightWeight() > 0.0) {
+        addHeightCostDerivatives(N_, height_ref_[N_](2));
     }
     
     // ADD TERMINAL UPRIGHT COST DERIVATIVES if weight > 0
@@ -484,10 +464,10 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         Eigen::VectorXd u_err = u_traj[t] - u_ref[t];
         total_cost += ilqr::ControlCost(u_err, robot_.R());
         
-        // CoM position cost
-        if (robot_.getCoMWeight() > 0.0) {
-            Eigen::Vector3d residual = robot_.computeCoM(x_traj[t]) - com_ref_[t];
-            total_cost += ilqr::CoMPosCost(residual, robot_.getCoMWeight(), getNormParams(norm_params_, "com_position"));
+        // Height (torso z) cost
+        if (robot_.getHeightWeight() > 0.0) {
+            double residual = x_traj[t](2) - height_ref_[t](2);
+            total_cost += ilqr::HeightCost(residual, robot_.getHeightWeight(), getNormParams(norm_params_, "height"));
         }
         
         // CoM velocity cost
@@ -515,36 +495,16 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
                 total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
             }
         }
-        
-        // EE position cost (during swing)
-        if (robot_.getEEPosWeight() > 0.0) {
-            for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {
-                if (!robot_.isStance(ee_idx, t)) {
-                    Eigen::Vector3d residual = robot_.computeEEPos(x_traj[t], ee_idx) - robot_.getEEReference(t, ee_idx);
-                    total_cost += ilqr::EEPosCost(residual, robot_.getEEPosWeight(), getNormParams(norm_params_, "ee_position"));
-                }
-            }
-        }
-        
-        // EE velocity cost (during stance)
-        if (robot_.getEEVelWeight() > 0.0) {
-            for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {
-                if (robot_.isStance(ee_idx, t)) {
-                    Eigen::Vector3d residual = robot_.computeEEVel(x_traj[t], ee_idx);  // Target is zero
-                    total_cost += ilqr::EEVelCost(residual, robot_.getEEVelWeight(), getNormParams(norm_params_, "ee_velocity"));
-                }
-            }
-        }
     }
-    
+
     // Terminal posture cost (joint angles [7:nq], Quadratic)
     Eigen::VectorXd x_err_N = x_traj[N_] - x_ref[N_];
     total_cost += ilqr::PostureCost(x_err_N, robot_.Qf());
     
-    // Terminal CoM position cost
-    if (robot_.getCoMWeight() > 0.0) {
-        Eigen::Vector3d residual = robot_.computeCoM(x_traj[N_]) - com_ref_[N_];
-        total_cost += ilqr::CoMPosCost(residual, robot_.getCoMWeight(), getNormParams(norm_params_, "com_position"));
+    // Terminal height (torso z) cost
+    if (robot_.getHeightWeight() > 0.0) {
+        double residual = x_traj[N_](2) - height_ref_[N_](2);
+        total_cost += ilqr::HeightCost(residual, robot_.getHeightWeight(), getNormParams(norm_params_, "height"));
     }
     
     // Terminal CoM velocity cost
@@ -586,18 +546,18 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
 bool iLQR::solve(const Eigen::VectorXd& x0,
                  const std::vector<Eigen::VectorXd>& x_ref,
                  const std::vector<Eigen::VectorXd>& u_ref,
-                 const std::vector<Eigen::Vector3d>& com_ref,
+                 const std::vector<Eigen::Vector3d>& height_ref,
                  double& cost_out) {
-    if (x_ref.size() != (size_t)(N_ + 1) || u_ref.size() != (size_t)N_ || com_ref.size() != (size_t)(N_ + 1)) {
+    if (x_ref.size() != (size_t)(N_ + 1) || u_ref.size() != (size_t)N_ || height_ref.size() != (size_t)(N_ + 1)) {
         std::cerr << "Reference size mismatch: x_ref=" << x_ref.size()
                   << " expected=" << N_ + 1 << ", u_ref=" << u_ref.size()
-                  << " expected=" << N_ << ", com_ref=" << com_ref.size()
+                  << " expected=" << N_ << ", height_ref=" << height_ref.size()
                   << " expected=" << N_ + 1 << std::endl;
         return false;
     }
     
-    // Store CoM reference
-    com_ref_ = com_ref;
+    // Store height reference
+    height_ref_ = height_ref;
 
 #ifdef ENABLE_PROFILING
     auto t_cost_start = std::chrono::steady_clock::now();
@@ -754,16 +714,16 @@ bool iLQR::solve(const Eigen::VectorXd& x0,
     return true;
 }
 
-void iLQR::addCoMCostDerivatives(int t, const Eigen::Vector3d& com_ref) {
-    const double w_com = robot_.getCoMWeight();
+void iLQR::addHeightCostDerivatives(int t, double goal_z) {
+    const double w_height = robot_.getHeightWeight();
     
     // Use symbolic derivatives (fast and exact!)
-    Eigen::VectorXd grad_com = derivatives_.CoMGrad(xbar_[t], com_ref, w_com);
-    Eigen::MatrixXd hess_com = derivatives_.CoMHess(xbar_[t], com_ref, w_com);
+    Eigen::VectorXd grad_height = derivatives_.HeightGrad(xbar_[t], goal_z, w_height);
+    Eigen::MatrixXd hess_height = derivatives_.HeightHess(xbar_[t], goal_z, w_height);
     
     // Add to cost quadratics
-    lx_[t] += grad_com;
-    lxx_[t] += hess_com;
+    lx_[t] += grad_height;
+    lxx_[t] += hess_height;
 }
 
 // CoM Velocity Cost Derivatives (SEPARATE from position tracking)
@@ -786,59 +746,6 @@ void iLQR::addCoMVelCostDerivatives(int t) {
         
     } catch (const std::exception& e) {
         std::cerr << "Warning: CoM velocity cost error at t=" << t << ": " << e.what() << std::endl;
-    }
-}
-
-void iLQR::addEEPosCostDerivatives(int t) {
-    const double w_ee = robot_.getEEPosWeight();
-    
-    // Add derivatives for each end-effector
-    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link for H1
-        // Skip position cost during stance phase (foot should stay planted)
-        if (robot_.isStance(ee_idx, t)) continue;
-        
-        try {
-            std::string frame_name = robot_.getEEFrameName(ee_idx);
-            Eigen::Vector3d ee_ref = robot_.getEEReference(t, ee_idx);
-            
-            // Use symbolic derivatives
-            Eigen::VectorXd grad_ee = derivatives_.EEposGrad(xbar_[t], ee_ref, frame_name, w_ee);
-            Eigen::MatrixXd hess_ee = derivatives_.EEposHess(xbar_[t], ee_ref, frame_name, w_ee);
-            
-            // Add to cost quadratics
-            lx_[t] += grad_ee;
-            lxx_[t] += hess_ee;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: EE cost error for idx " << ee_idx << ": " << e.what() << std::endl;
-        }
-    }
-}
-
-void iLQR::addEEVelCostDerivatives(int t) {
-    const double w_ee_vel = robot_.getEEVelWeight();
-    
-    // Add derivatives for each end-effector
-    for (int ee_idx = 0; ee_idx < 2; ++ee_idx) {  // left_ankle_link, right_ankle_link
-        // Skip velocity cost during swing phase (foot needs to move)
-        if (!robot_.isStance(ee_idx, t)) continue;
-        
-        try {
-            std::string frame_name = robot_.getEEFrameName(ee_idx);
-            // During stance, penalize velocity (target zero velocity to keep foot planted)
-            Eigen::Vector3d ee_vel_ref = Eigen::Vector3d::Zero();
-            
-            // Use symbolic derivatives
-            Eigen::VectorXd grad_ee_vel = derivatives_.EEvelGrad(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
-            Eigen::MatrixXd hess_ee_vel = derivatives_.EEvelHess(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
-            
-            // Add to cost quadratics
-            lx_[t] += grad_ee_vel;
-            lxx_[t] += hess_ee_vel;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: EE velocity cost error for idx " << ee_idx << ": " << e.what() << std::endl;
-        }
     }
 }
 

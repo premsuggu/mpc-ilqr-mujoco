@@ -56,9 +56,9 @@ bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) 
         auto t_warm_start = std::chrono::steady_clock::now();
 #endif
         if (has_prev_solution_) {
-            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, &prev_xbar_, &prev_ubar_);
+            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, height_ref_window_, &prev_xbar_, &prev_ubar_);
         } else {
-            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, com_ref_window_);
+            ilqr_.initializeWithReference(x_measured, x_ref_window_, u_ref_window_, height_ref_window_);
         }
 #ifdef ENABLE_PROFILING
         auto t_warm_end = std::chrono::steady_clock::now();
@@ -72,7 +72,7 @@ bool MPC::stepOnce(const Eigen::VectorXd& x_measured, Eigen::VectorXd& u_apply) 
 #ifdef ENABLE_PROFILING
         auto t_solve_start = std::chrono::steady_clock::now();
 #endif
-        success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, com_ref_window_, solve_cost);
+        success = ilqr_.solve(x_measured, x_ref_window_, u_ref_window_, height_ref_window_, solve_cost);
 #ifdef ENABLE_PROFILING
         auto t_solve_end = std::chrono::steady_clock::now();
         prof_data["MPC_iLQR_solve"].times.push_back(
@@ -162,7 +162,7 @@ void MPC::getNominalTrajectory(std::vector<Eigen::VectorXd>& x_traj,
 
 void MPC::extractReferenceWindow() {
     // Get reference window starting from current time index
-    robot_.getReferenceWindow(t_idx_, N_, x_ref_window_, u_ref_window_, com_ref_window_);
+    robot_.getReferenceWindow(t_idx_, N_, x_ref_window_, u_ref_window_, height_ref_window_);
 }
 
 Eigen::VectorXd MPC::computeTVLQRControl(const Eigen::VectorXd& x_measured) {

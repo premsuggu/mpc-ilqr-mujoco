@@ -17,7 +17,7 @@ struct CostWeights {
     double R_control;
 
     // Task-specific weights (used by addXxxCostDerivatives in ilqr.cpp)
-    double W_com, W_com_vel, W_foot, W_foot_vel;
+    double W_height, W_com_vel, W_foot, W_foot_vel;
     double W_upright, w_balance;
 };
 

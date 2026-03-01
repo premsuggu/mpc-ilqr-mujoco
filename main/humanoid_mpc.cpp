@@ -148,10 +148,8 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     std::cout << "Model loaded: nx=" << robot.nx() << ", nu=" << robot.nu() << std::endl;
     config.buildCostMatrices(robot.nx(), robot.nu(), robot.nq());
     robot.setCostWeights(config.Q, config.R, config.Qf);
-    robot.setCoMWeight(config.mpc.costs.W_com);
+    robot.setHeightWeight(config.mpc.costs.W_height);
     robot.setCoMVelWeight(config.mpc.costs.W_com_vel);
-    robot.setEEPosWeight(config.mpc.costs.W_foot); 
-    robot.setEEVelWeight(config.mpc.costs.W_foot_vel);
     robot.setUprightWeight(config.mpc.costs.W_upright);
     robot.setBalanceWeight(config.mpc.costs.w_balance);
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);
@@ -198,7 +196,7 @@ void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config, RerunLogge
             
             // Get reference at current timestep (if available)
             const Eigen::VectorXd* x_ref = nullptr;
-            const Eigen::Vector3d* com_ref = nullptr;
+            const Eigen::Vector3d* height_ref = nullptr;
             const Eigen::Vector3d* com_vel_ref = nullptr;
             const std::vector<Eigen::Vector3d>* ee_pos_ref = nullptr;
             
@@ -206,8 +204,8 @@ void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config, RerunLogge
             if (step < robot.x_ref_full_.size()) {
                 x_ref = &robot.x_ref_full_[step];
             }
-            if (step < robot.com_ref_full_.size()) {
-                com_ref = &robot.com_ref_full_[step];
+            if (step < robot.height_ref_full_.size()) {
+                height_ref = &robot.height_ref_full_[step];
             }
             if (step < robot.com_vel_ref_full_.size()) {
                 com_vel_ref = &robot.com_vel_ref_full_[step];
@@ -235,7 +233,7 @@ void runSimulation(RobotUtils& robot, MPC& mpc, const Config& config, RerunLogge
             // Log CoM
             Eigen::Vector3d com_pos = robot.computeCoM(x_current);
             Eigen::Vector3d com_vel = robot.computeCoMVelocity(x_current);
-            rerun_logger->logCoM(com_pos, com_vel, com_ref, com_vel_ref);
+            rerun_logger->logCoM(com_pos, com_vel, height_ref, com_vel_ref);
             
             // Log end effectors
             auto ee_positions = robot.getEndEffectorPositions();

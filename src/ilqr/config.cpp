@@ -53,7 +53,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.R_control = costs_node["control"]["R_control"].as<double>();
 
         // Task-specific weights
-        config.mpc.costs.W_com      = costs_node["W_com_pos"].as<double>();
+        config.mpc.costs.W_height   = costs_node["W_height"].as<double>();
         config.mpc.costs.W_com_vel  = costs_node["W_com_vel"].as<double>();
         config.mpc.costs.W_foot     = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();

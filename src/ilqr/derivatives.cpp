@@ -65,7 +65,7 @@ void symDerivatives::buildSymbolicFunctions() {
     gravity_ = 9.81;
     
     // Initialize CoM functions flag
-    com_functions_built_ = false;
+    height_functions_built_ = false;
     com_vel_functions_built_ = false;
     upright_functions_built_ = false;
     balance_functions_built_ = false;
@@ -74,106 +74,29 @@ void symDerivatives::buildSymbolicFunctions() {
               << " (nq=" << model_.nq << ", nv=" << model_.nv << ")" << std::endl;
 }
 
-void symDerivatives::buildEEFunctions(const std::string& frame_name) {
-    // Get frame ID
-    pinocchio::FrameIndex frame_id = getFrameId(frame_name);
-    
-    // Create symbolic input parameters
-    ::casadi::SX target_sym = ::casadi::SX::sym("target", 3);
+void symDerivatives::buildHeightFunctions() {
+    // Create symbolic input parameters (scalar target height)
+    ::casadi::SX target_z_sym = ::casadi::SX::sym("target_z");
     ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
     
     // Use symbolic cost helper
-    ::casadi::SX cost = symEEPos(target_sym, weight_sym, frame_id, frame_name);
-    
-    // Build cached functions
-    // 1. Position function (for debugging/validation) - only depends on q part
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq);
-    for (int i = 0; i < model_.nq; i++) {
-        q_ad[i] = x_sym_(i);
-    }
-    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
-    pinocchio::updateFramePlacements(ad_model_, ad_data_);
-    auto ee_transform = ad_data_.oMf[frame_id];
-    ::casadi::SX ee_pos = ::casadi::SX::vertcat({
-        ee_transform.translation()[0],
-        ee_transform.translation()[1], 
-        ee_transform.translation()[2]
-    });
-    
-    ::casadi::SX q_only = x_sym_(::casadi::Slice(0, model_.nq));
-    ee_pos_fns_[frame_name] = ::casadi::Function(
-        "ee_pos_" + frame_name, 
-        {q_only}, {ee_pos}
-    );
-    
-    // 2. Gradient function w.r.t. full state [q, v]
-    ::casadi::SX grad = ::casadi::SX::gradient(cost, x_sym_);
-    ee_grad_fns_[frame_name] = ::casadi::Function(
-        "ee_grad_" + frame_name,
-        {x_sym_, target_sym, weight_sym}, {grad}
-    );
-    
-    // 3. Hessian function w.r.t. full state [q, v]
-    ::casadi::SX hess = ::casadi::SX::jacobian(grad, x_sym_);
-    ee_hess_fns_[frame_name] = ::casadi::Function(
-        "ee_hess_" + frame_name,
-        {x_sym_, target_sym, weight_sym}, {hess}
-    );
-    
-    std::cout << "Built cached EE position functions for frame: " << frame_name << std::endl;
-}
-
-void symDerivatives::buildEEVelFunctions(const std::string& frame_name) {
-    // Get frame ID
-    pinocchio::FrameIndex frame_id = getFrameId(frame_name);
-    
-    // Create symbolic input parameters
-    ::casadi::SX target_vel_sym = ::casadi::SX::sym("target_vel", 3);
-    ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
-    
-    // Use symbolic cost helper
-    ::casadi::SX vel_cost = symEEVel(target_vel_sym, weight_sym, frame_id, frame_name);
-    
-    // Build cached functions
-    ::casadi::SX vel_grad = ::casadi::SX::gradient(vel_cost, x_sym_);
-    ee_vel_grad_fns_[frame_name] = ::casadi::Function(
-        "ee_vel_grad_" + frame_name,
-        {x_sym_, target_vel_sym, weight_sym}, {vel_grad}
-    );
-    
-    ::casadi::SX vel_hess = ::casadi::SX::jacobian(vel_grad, x_sym_);
-    ee_vel_hess_fns_[frame_name] = ::casadi::Function(
-        "ee_vel_hess_" + frame_name,
-        {x_sym_, target_vel_sym, weight_sym}, {vel_hess}
-    );
-    
-    std::cout << "Built cached EE velocity functions for frame: " << frame_name << std::endl;
-}
-
-void symDerivatives::buildCoMFunctions() {
-    // Create symbolic input parameters
-    ::casadi::SX target_com_sym = ::casadi::SX::sym("target_com", 3);
-    ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
-    
-    // Use symbolic cost helper
-    ::casadi::SX com_cost = symCoMPos(target_com_sym, weight_sym);
+    ::casadi::SX height_cost = symHeight(target_z_sym, weight_sym);
     
     // Build gradient and Hessian functions
-    ::casadi::SX com_grad = ::casadi::SX::gradient(com_cost, x_sym_);
-    com_grad_fn_ = ::casadi::Function(
-        "com_grad",
-        {x_sym_, target_com_sym, weight_sym}, {com_grad}
+    ::casadi::SX height_grad = ::casadi::SX::gradient(height_cost, x_sym_);
+    height_grad_fn_ = ::casadi::Function(
+        "height_grad",
+        {x_sym_, target_z_sym, weight_sym}, {height_grad}
     );
     
-    ::casadi::SX com_hess = ::casadi::SX::jacobian(com_grad, x_sym_);
-    com_hess_fn_ = ::casadi::Function(
-        "com_hess", 
-        {x_sym_, target_com_sym, weight_sym}, {com_hess}
+    ::casadi::SX height_hess = ::casadi::SX::jacobian(height_grad, x_sym_);
+    height_hess_fn_ = ::casadi::Function(
+        "height_hess", 
+        {x_sym_, target_z_sym, weight_sym}, {height_hess}
     );
     
-    com_functions_built_ = true;
-    std::cout << "Built cached CoM functions" << std::endl;
+    height_functions_built_ = true;
+    std::cout << "Built cached height functions" << std::endl;
 }
 
 // Build CoM velocity cost functions (SEPARATE from position)
@@ -224,22 +147,14 @@ void symDerivatives::buildUprightFunctions() {
                                         {hess});
 }
 
-void symDerivatives::prepareFrame(const std::string& frame_name) {
-    // Build position functions if not exist
-    if (ee_grad_fns_.find(frame_name) == ee_grad_fns_.end()) {
-        buildEEFunctions(frame_name);
-    }
-    // NOTE: Velocity functions are built on-demand in EEvelGrad/EEvelHess
-    // to avoid any potential interference with position functions
-}
-
-Eigen::VectorXd symDerivatives::EEposGrad(const Eigen::VectorXd& x, 
-                                         const Eigen::Vector3d& target_pos,
-                                         const std::string& frame_name,
-                                         double weight) {
+Eigen::VectorXd symDerivatives::HeightGrad(const Eigen::VectorXd& x,
+                                       double goal_z,
+                                       double weight) {
     
-    // Ensure functions are built for this frame
-    prepareFrame(frame_name);
+    // Ensure height functions are built
+    if (!height_functions_built_) {
+        buildHeightFunctions();
+    }
     
     // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
     Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
@@ -247,11 +162,11 @@ Eigen::VectorXd symDerivatives::EEposGrad(const Eigen::VectorXd& x,
     // Convert inputs to CasADi format
     std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
     ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_pos[0], target_pos[1], target_pos[2]});
+    ::casadi::DM target_dm = ::casadi::DM(goal_z);
     ::casadi::DM weight_dm = ::casadi::DM(weight);
     
     // Evaluate cached function (fast!)
-    ::casadi::DM grad_dm = ee_grad_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
+    ::casadi::DM grad_dm = height_grad_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;
@@ -263,45 +178,13 @@ Eigen::VectorXd symDerivatives::EEposGrad(const Eigen::VectorXd& x,
     return gradient;
 }
 
-Eigen::MatrixXd symDerivatives::EEposHess(const Eigen::VectorXd& x,
-                                         const Eigen::Vector3d& target_pos,
-                                         const std::string& frame_name,
-                                         double weight) {
-    
-    // Ensure functions are built for this frame
-    prepareFrame(frame_name);
-    
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
-    // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
-    ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_pos[0], target_pos[1], target_pos[2]});
-    ::casadi::DM weight_dm = ::casadi::DM(weight);
-    
-    // Evaluate cached function (fast!)
-    ::casadi::DM hess_dm = ee_hess_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
-    
-    // Convert back to Eigen (full state size)
-    int nx = model_.nq + model_.nv;
-    Eigen::MatrixXd hessian(nx, nx);
-    for (int i = 0; i < nx; i++) {
-        for (int j = 0; j < nx; j++) {
-            hessian(i, j) = double(hess_dm(i, j));
-        }
-    }
-    
-    return hessian;
-}
-
-Eigen::VectorXd symDerivatives::CoMGrad(const Eigen::VectorXd& x,
-                                       const Eigen::Vector3d& target_com,
+Eigen::MatrixXd symDerivatives::HeightHess(const Eigen::VectorXd& x,
+                                       double goal_z,
                                        double weight) {
     
-    // Ensure CoM functions are built
-    if (!com_functions_built_) {
-        buildCoMFunctions();
+    // Ensure height functions are built
+    if (!height_functions_built_) {
+        buildHeightFunctions();
     }
     
     // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
@@ -310,42 +193,11 @@ Eigen::VectorXd symDerivatives::CoMGrad(const Eigen::VectorXd& x,
     // Convert inputs to CasADi format
     std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
     ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_com[0], target_com[1], target_com[2]});
+    ::casadi::DM target_dm = ::casadi::DM(goal_z);
     ::casadi::DM weight_dm = ::casadi::DM(weight);
     
     // Evaluate cached function (fast!)
-    ::casadi::DM grad_dm = com_grad_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
-    
-    // Convert back to Eigen (full state size)
-    int nx = model_.nq + model_.nv;
-    Eigen::VectorXd gradient(nx);
-    for (int i = 0; i < nx; i++) {
-        gradient(i) = double(grad_dm(i));
-    }
-    
-    return gradient;
-}
-
-Eigen::MatrixXd symDerivatives::CoMHess(const Eigen::VectorXd& x,
-                                       const Eigen::Vector3d& target_com,
-                                       double weight) {
-    
-    // Ensure CoM functions are built
-    if (!com_functions_built_) {
-        buildCoMFunctions();
-    }
-    
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
-    // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
-    ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_com[0], target_com[1], target_com[2]});
-    ::casadi::DM weight_dm = ::casadi::DM(weight);
-    
-    // Evaluate cached function (fast!)
-    ::casadi::DM hess_dm = com_hess_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
+    ::casadi::DM hess_dm = height_hess_fn_(::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;
@@ -425,72 +277,6 @@ Eigen::MatrixXd symDerivatives::CoMVelHess(const Eigen::VectorXd& x,
     return hessian;
 }
 
-Eigen::VectorXd symDerivatives::EEvelGrad(const Eigen::VectorXd& x,
-                                         const Eigen::Vector3d& target_vel,
-                                         const std::string& frame_name,
-                                         double weight) {
-    
-    // Build velocity functions on-demand
-    if (ee_vel_grad_fns_.find(frame_name) == ee_vel_grad_fns_.end()) {
-        buildEEVelFunctions(frame_name);
-    }
-    
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
-    // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
-    ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_vel[0], target_vel[1], target_vel[2]});
-    ::casadi::DM weight_dm = ::casadi::DM(weight);
-    
-    // Evaluate cached function (fast!)
-    ::casadi::DM grad_dm = ee_vel_grad_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
-    
-    // Convert back to Eigen (full state size)
-    int nx = model_.nq + model_.nv;
-    Eigen::VectorXd gradient(nx);
-    for (int i = 0; i < nx; i++) {
-        gradient(i) = double(grad_dm(i));
-    }
-    
-    return gradient;
-}
-
-Eigen::MatrixXd symDerivatives::EEvelHess(const Eigen::VectorXd& x,
-                                         const Eigen::Vector3d& target_vel,
-                                         const std::string& frame_name,
-                                         double weight) {
-    
-    // Build velocity functions on-demand
-    if (ee_vel_hess_fns_.find(frame_name) == ee_vel_hess_fns_.end()) {
-        buildEEVelFunctions(frame_name);
-    }
-    
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
-    // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
-    ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_dm = ::casadi::DM({target_vel[0], target_vel[1], target_vel[2]});
-    ::casadi::DM weight_dm = ::casadi::DM(weight);
-    
-    // Evaluate cached function (fast!)
-    ::casadi::DM hess_dm = ee_vel_hess_fns_[frame_name](::casadi::DMVector{x_dm, target_dm, weight_dm})[0];
-    
-    // Convert back to Eigen (full state size)
-    int nx = model_.nq + model_.nv;
-    Eigen::MatrixXd hessian(nx, nx);
-    for (int i = 0; i < nx; i++) {
-        for (int j = 0; j < nx; j++) {
-            hessian(i, j) = double(hess_dm(i, j));
-        }
-    }
-    
-    return hessian;
-}
-
 // Upright posture derivatives
 Eigen::VectorXd symDerivatives::UprightGrad(const Eigen::VectorXd& x, double w_upright) {
     // Build functions if not yet built
@@ -538,33 +324,18 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
 }
 
 
-::casadi::SX symDerivatives::symCoMPos(const ::casadi::SX& target_com,
+::casadi::SX symDerivatives::symHeight(const ::casadi::SX& target_z,
                                        const ::casadi::SX& weight) {
-    // Extract q from x_sym_ (member variable)
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq);
-    for (int i = 0; i < model_.nq; i++) {
-        q_ad[i] = x_sym_(i);
-    }
-    
-    // Compute CoM symbolically
-    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
-    pinocchio::centerOfMass(ad_model_, ad_data_, q_ad);
-    
-    // Build CoM position vector
-    std::vector<::casadi::SX> com_components = {
-        ad_data_.com[0][0],  // x
-        ad_data_.com[0][1],  // y
-        ad_data_.com[0][2]   // z
-    };
-    ::casadi::SX com_pos = ::casadi::SX::vertcat(com_components);
-    ::casadi::SX residual = com_pos - target_com;
+    // Height cost: residual = torso_z - goal_z  (DeepMind "Height" term)
+    // x_sym_(2) is the base/torso z position in Pinocchio convention
+    // (indices 0,1,2 are px,py,pz regardless of quaternion convention)
+    ::casadi::SX residual = x_sym_(2) - target_z;
     
     // Get norm params from configuration (default to quadratic if not found)
-    ilqr::NormParams norm = norm_params_.count("com_position") > 0 
-        ? norm_params_.at("com_position")
+    ilqr::NormParams norm = norm_params_.count("height") > 0 
+        ? norm_params_.at("height")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::CoMPosCost(residual, weight, norm);
+    return ilqr::HeightCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symCoMVel(const ::casadi::SX& target_com_vel,
@@ -647,122 +418,6 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
         ? norm_params_.at("com_velocity")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
     return ilqr::CoMVelCost(residual, weight, norm);
-}
-
-::casadi::SX symDerivatives::symEEPos(const ::casadi::SX& target_pos,
-                                      const ::casadi::SX& weight,
-                                      pinocchio::FrameIndex frame_id,
-                                      const std::string& frame_name) {
-    // Extract q from x_sym_
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq);
-    for (int i = 0; i < model_.nq; i++) {
-        q_ad[i] = x_sym_(i);
-    }
-    
-    // Compute forward kinematics
-    pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
-    pinocchio::updateFramePlacements(ad_model_, ad_data_);
-    
-    // Extract end-effector position
-    auto ee_transform = ad_data_.oMf[frame_id];
-    ::casadi::SX ee_pos = ::casadi::SX::vertcat({
-        ee_transform.translation()[0],
-        ee_transform.translation()[1],
-        ee_transform.translation()[2]
-    });
-    ::casadi::SX residual = ee_pos - target_pos;
-    
-    // Determine norm key based on frame name
-    std::string norm_key = "ee_position_" + frame_name;
-    ilqr::NormParams norm = norm_params_.count(norm_key) > 0 
-        ? norm_params_.at(norm_key)
-        : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::EEPosCost(residual, weight, norm);
-}
-
-::casadi::SX symDerivatives::symEEVel(const ::casadi::SX& target_vel,
-                                      const ::casadi::SX& weight,
-                                      pinocchio::FrameIndex frame_id,
-                                      const std::string& frame_name) {
-    // Extract q from x_sym_
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    ConfigVector q_ad(model_.nq);
-    
-    for (int i = 0; i < model_.nq; i++) {
-        q_ad[i] = x_sym_(i);
-    }
-    
-    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state (indices 3,4,5,6)
-    casadi::SX qx = x_sym_(3);
-    casadi::SX qy = x_sym_(4);
-    casadi::SX qz = x_sym_(5);
-    casadi::SX qw = x_sym_(6);
-    
-    // Build rotation matrix R_WB from quaternion (world to body)
-    casadi::SX R_00 = 1 - 2*qy*qy - 2*qz*qz;
-    casadi::SX R_01 = 2*qx*qy - 2*qw*qz;
-    casadi::SX R_02 = 2*qx*qz + 2*qw*qy;
-    casadi::SX R_10 = 2*qx*qy + 2*qw*qz;
-    casadi::SX R_11 = 1 - 2*qx*qx - 2*qz*qz;
-    casadi::SX R_12 = 2*qy*qz - 2*qw*qx;
-    casadi::SX R_20 = 2*qx*qz - 2*qw*qy;
-    casadi::SX R_21 = 2*qy*qz + 2*qw*qx;
-    casadi::SX R_22 = 1 - 2*qx*qx - 2*qy*qy;
-    
-    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
-    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
-    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
-    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
-    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
-    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
-    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
-    
-    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
-    casadi::SX v_lin_local_x = R_00*v_lin_world_x + R_10*v_lin_world_y + R_20*v_lin_world_z;
-    casadi::SX v_lin_local_y = R_01*v_lin_world_x + R_11*v_lin_world_y + R_21*v_lin_world_z;
-    casadi::SX v_lin_local_z = R_02*v_lin_world_x + R_12*v_lin_world_y + R_22*v_lin_world_z;
-    
-    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
-    std::vector<casadi::SX> v_pin_vec;
-    v_pin_vec.push_back(v_lin_local_x);
-    v_pin_vec.push_back(v_lin_local_y);
-    v_pin_vec.push_back(v_lin_local_z);
-    v_pin_vec.push_back(v_ang_local_x);
-    v_pin_vec.push_back(v_ang_local_y);
-    v_pin_vec.push_back(v_ang_local_z);
-    for (int i = 6; i < model_.nv; i++) {
-        v_pin_vec.push_back(x_sym_(model_.nq + i));
-    }
-    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
-    
-    // Compute joint Jacobians (required before frame Jacobian)
-    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
-    pinocchio::updateFramePlacements(ad_model_, ad_data_);
-    
-    // Get frame Jacobian (6 x nv, position part is first 3 rows)
-    auto J_frame = pinocchio::getFrameJacobian(
-        ad_model_, ad_data_, frame_id, pinocchio::LOCAL_WORLD_ALIGNED
-    );
-    
-    // Extract position Jacobian (3 x nv)
-    casadi::SX J_pos = casadi::SX::zeros(3, model_.nv);
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < model_.nv; j++) {
-            J_pos(i, j) = J_frame(i, j);
-        }
-    }
-    
-    // Compute EE velocity: v_ee = J_pos * v_pin_local
-    casadi::SX ee_vel = casadi::SX::mtimes(J_pos, v_pin_local_sx);
-    casadi::SX residual = ee_vel - target_vel;
-    
-    // Determine norm key based on frame name
-    std::string norm_key = "ee_velocity_" + frame_name;
-    ilqr::NormParams norm = norm_params_.count(norm_key) > 0 
-        ? norm_params_.at(norm_key)
-        : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::EEVelCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symUpright(const ::casadi::SX& weight) {
