@@ -9,14 +9,16 @@
 
 // Struct to hold cost function weights
 struct CostWeights {
-    double Q_position_x, Q_position_y, Q_position_z, Q_quat_w;
-    std::vector<double> Q_quat_xyz;
-    double Q_joint_pos, Q_vel_x, Q_vel_y, Q_vel_z, Q_ang_vel, Q_joint_vel;
+    // Posture cost: penalises joint angles qpos[7:nq] from reference (Quadratic)
+    double W_posture;           // Running cost weight
+    double W_posture_terminal;  // Terminal cost weight
+
+    // Control regularization (R matrix, Quadratic)
     double R_control;
-    double Qf_multiplier, Qf_position_x, Qf_position_y, Qf_position_z, Qf_vel_z;
+
+    // Task-specific weights (used by addXxxCostDerivatives in ilqr.cpp)
     double W_com, W_com_vel, W_foot, W_foot_vel;
-    double W_upright;
-    double w_balance;
+    double W_upright, w_balance;
 };
 
 // Struct to hold MPC parameters

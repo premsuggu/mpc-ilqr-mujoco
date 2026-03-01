@@ -20,42 +20,43 @@ mpc:
   contact_impratio: 100.0  # Contact stiffness
 
   cost_weights:
-    # State deviation weights (Q matrix) - EXACT DeepMind MJPC values
-    Q_position_x: 5.0        # Not directly used (Height uses SmoothAbs2Loss separately)
-    Q_position_y: 5.0        # Not directly used
-    Q_position_z: 5.0        # DeepMind "Height" = 5.0 with SmoothAbs2Loss(p=0.1, q=4.0)
-    Q_quat_w: 5.0            # Part of "Upright" = 5.0 with L2(p=0.01)
-    Q_quat_xyz: [5.0, 5.0, 5.0]  # Part of "Upright" orientation tracking
-    Q_joint_pos: 0.025       # DeepMind "Posture" = 0.025 with Quadratic norm
-    Q_vel_x: 0.0             # Not in MJPC (set to 0)
-    Q_vel_y: 0.0             # Not in MJPC (set to 0)
-    Q_vel_z: 0.0             # Not in MJPC (set to 0)
-    Q_ang_vel: 0.0           # Not in MJPC (set to 0)
-    Q_joint_vel: 0.0         # Not in MJPC (set to 0)
-    
-    # Control effort weight (R matrix) - Uses Cosh norm in DeepMind
-    R_control: 0.1           # DeepMind "Control" = 0.1 with Cosh(p=0.3)
-    
-    # Terminal cost multiplier (Qf = Q * Qf_multiplier)
-    Qf_multiplier: 2.0       # Keep same
-    Qf_position_x: 2.0
-    Qf_position_y: 2.0
-    Qf_position_z: 2.0
-    Qf_vel_z: 2.0
-    
-    # Task-specific weights - DeepMind MJPC
+    # -------------------------------------------------------------------------
+    # Posture cost — penalises joint angles qpos[7:nq] from reference
+    # DeepMind: "Posture", dim=21, Quadratic norm (type=0), weight=0.025
+    # -------------------------------------------------------------------------
+    posture:
+      weight:          0.025   # Running cost weight (Quadratic, no norm params needed)
+      terminal_weight: 0.1     # Terminal cost weight (independent of running)
+
+    # -------------------------------------------------------------------------
+    # Control regularization — uniform penalty on actuator torques
+    # DeepMind: "Control", Cosh norm (type=3, p=0.3), weight=0.1
+    # (Cosh norm applied in addControlCost; R matrix uses this scalar)
+    # -------------------------------------------------------------------------
+    control:
+      R_control: 0.1
+
+    # -------------------------------------------------------------------------
+    # Task-specific weights — used by addXxxCostDerivatives in ilqr.cpp
+    # -------------------------------------------------------------------------
     W_com_pos: 5.0           # DeepMind "Balance" = 5.0 (Capture point)
     W_com_vel: 0.625         # DeepMind "Velocity" = 0.625 (CoM velocity tracking)
     W_foot: 1.0              # DeepMind "Pelvis/Feet" = 1.0
     W_foot_vel: 1.0          # DeepMind foot tracking
     W_upright: 5.0           # DeepMind "Upright" = 5.0
-    w_balance: 5.0           # DeepMind "Balance" = 5.0 (redundant with W_com_pos)
+    w_balance: 5.0           # DeepMind "Balance" = 5.0
 
   # Norm types for each cost term - EXACT DeepMind MJPC values
   # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7), rectify (8)
   # Parameters: p (regularization), q (power parameter)
   # Reference: others/mujoco_mpc/mjpc/tasks/humanoid/walk/task.xml
   norm_types:
+    # Posture (joint angles [7:nq]) - Quadratic norm (no p/q needed)
+    posture:
+      type: 0      # Quadratic: 0.5 * x^T * x
+      p: 0.0
+      q: 1.0
+
     # Balance (capture point) - L22 norm with p=0.02, q=4.0
     balance:
       type: 1      # L22: ((x*x')^q + p^(2*q))^(1/2/q) - p

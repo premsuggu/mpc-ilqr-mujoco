@@ -44,29 +44,21 @@ Config loadConfigFromFile(const std::string& filepath) {
 
         // Load cost weights
         auto costs_node = mpc_node["cost_weights"];
-        config.mpc.costs.Q_position_x = costs_node["Q_position_x"].as<double>();
-        config.mpc.costs.Q_position_y = costs_node["Q_position_y"].as<double>();
-        config.mpc.costs.Q_position_z = costs_node["Q_position_z"].as<double>();
-        config.mpc.costs.Q_quat_w = costs_node["Q_quat_w"].as<double>();
-        config.mpc.costs.Q_quat_xyz = costs_node["Q_quat_xyz"].as<std::vector<double>>();
-        config.mpc.costs.Q_joint_pos = costs_node["Q_joint_pos"].as<double>();
-        config.mpc.costs.Q_vel_x = costs_node["Q_vel_x"].as<double>();
-        config.mpc.costs.Q_vel_y = costs_node["Q_vel_y"].as<double>();
-        config.mpc.costs.Q_vel_z = costs_node["Q_vel_z"].as<double>();
-        config.mpc.costs.Q_ang_vel = costs_node["Q_ang_vel"].as<double>();
-        config.mpc.costs.Q_joint_vel = costs_node["Q_joint_vel"].as<double>();
-        config.mpc.costs.R_control = costs_node["R_control"].as<double>();
-        config.mpc.costs.Qf_multiplier = costs_node["Qf_multiplier"].as<double>();
-        config.mpc.costs.Qf_position_x = costs_node["Qf_position_x"].as<double>();
-        config.mpc.costs.Qf_position_y = costs_node["Qf_position_y"].as<double>();
-        config.mpc.costs.Qf_position_z = costs_node["Qf_position_z"].as<double>();
-        config.mpc.costs.Qf_vel_z = costs_node["Qf_vel_z"].as<double>();
-        config.mpc.costs.W_com = costs_node["W_com_pos"].as<double>();
-        config.mpc.costs.W_com_vel = costs_node["W_com_vel"].as<double>();
-        config.mpc.costs.W_foot = costs_node["W_foot"].as<double>();
+
+        // Posture cost (joint angles [7:nq], Quadratic norm)
+        config.mpc.costs.W_posture          = costs_node["posture"]["weight"].as<double>();
+        config.mpc.costs.W_posture_terminal = costs_node["posture"]["terminal_weight"].as<double>();
+
+        // Control regularization
+        config.mpc.costs.R_control = costs_node["control"]["R_control"].as<double>();
+
+        // Task-specific weights
+        config.mpc.costs.W_com      = costs_node["W_com_pos"].as<double>();
+        config.mpc.costs.W_com_vel  = costs_node["W_com_vel"].as<double>();
+        config.mpc.costs.W_foot     = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
-        config.mpc.costs.W_upright = costs_node["W_upright"].as<double>();  // Load upright weight
-        config.mpc.costs.w_balance = costs_node["w_balance"].as<double>();  // Load balance weight
+        config.mpc.costs.W_upright  = costs_node["W_upright"].as<double>();
+        config.mpc.costs.w_balance  = costs_node["w_balance"].as<double>();
         
         // Load constraints
         auto constraints_node = mpc_node["constraints"];
@@ -132,59 +124,22 @@ Config loadConfigFromFile(const std::string& filepath) {
 }
 
 void Config::buildCostMatrices(int nx, int nu, int nq) {
-    // Initialize all matrices as identity (all diagonal elements = 1.0)
-    Q = Eigen::MatrixXd::Identity(nx, nx);
-    R = Eigen::MatrixXd::Identity(nu, nu);
-    Qf = Eigen::MatrixXd::Identity(nx, nx);
-    
-    // Build Q matrix (state deviation weights)
-    
-    // Position tracking weights (CoM position in world frame)
-    Q(0, 0) = mpc.costs.Q_position_x;   // X position
-    Q(1, 1) = mpc.costs.Q_position_y;   // Y position
-    Q(2, 2) = mpc.costs.Q_position_z;    // Z position (critical)
-    
-    // Orientation tracking weights (quaternion representation)
-    Q(3, 3) = mpc.costs.Q_quat_w;        // quat w (real part)
-    Q(4, 4) = mpc.costs.Q_quat_xyz[0];   // quat x (roll)
-    Q(5, 5) = mpc.costs.Q_quat_xyz[1];   // quat y (pitch)
-    Q(6, 6) = mpc.costs.Q_quat_xyz[2];   // quat z (yaw)
-    
-    // Joint position tracking weights (actuated joints)
-    for (int i = 7; i < nq; i++) {
-        Q(i, i) = mpc.costs.Q_joint_pos;
-    }
-    
-    // Velocity tracking weights (linear velocities)
-    Q(nq + 0, nq + 0) = mpc.costs.Q_vel_x;    // vx
-    Q(nq + 1, nq + 1) = mpc.costs.Q_vel_y;    // vy
-    Q(nq + 2, nq + 2) = mpc.costs.Q_vel_z;     // vz (critical)
-    
-    // Angular velocity tracking weights
-    Q(nq + 3, nq + 3) = mpc.costs.Q_ang_vel;   // omega_x
-    Q(nq + 4, nq + 4) = mpc.costs.Q_ang_vel;   // omega_y
-    Q(nq + 5, nq + 5) = mpc.costs.Q_ang_vel;   // omega_z
-    
-    // Joint velocity tracking weights
-    for (int i = nq + 6; i < nx; i++) {
-        Q(i, i) = mpc.costs.Q_joint_vel;
-    }
-    
-    // Build R matrix (control effort regularization)
-    R *= mpc.costs.R_control;
-    
-    // Build Qf matrix (terminal cost weights)
-    
-    // Start with Q scaled by multiplier
-    Qf = Q * mpc.costs.Qf_multiplier;
-    
-    // Apply additional terminal weight multipliers to specific states
-    Qf(0, 0) *= mpc.costs.Qf_position_x;      // Final X position
-    Qf(1, 1) *= mpc.costs.Qf_position_y;      // Final Y position
-    Qf(2, 2) *= mpc.costs.Qf_position_z;       // Final Z position
-    Qf(nq + 2, nq + 2) *= mpc.costs.Qf_vel_z;  // Final Z velocity (critical)
-    
-    std::cout << "Cost matrices built: Q(" << nx << "x" << nx 
-              << "), R(" << nu << "x" << nu 
+    // --- Q: posture cost ---
+    // Only joint angles qpos[7:nq] are penalised (DeepMind "Posture", Quadratic).
+    // Base DOF (indices 0-6: xyz + quaternion) and all velocity rows stay zero.
+    Q = Eigen::MatrixXd::Zero(nx, nx);
+    for (int i = 7; i < nq; ++i)
+        Q(i, i) = mpc.costs.W_posture;
+
+    // --- R: control regularization (uniform across all actuators) ---
+    R = Eigen::MatrixXd::Identity(nu, nu) * mpc.costs.R_control;
+
+    // --- Qf: terminal posture cost (same structure, independent weight) ---
+    Qf = Eigen::MatrixXd::Zero(nx, nx);
+    for (int i = 7; i < nq; ++i)
+        Qf(i, i) = mpc.costs.W_posture_terminal;
+
+    std::cout << "Cost matrices built: Q(" << nx << "x" << nx
+              << "), R(" << nu << "x" << nu
               << "), Qf(" << nx << "x" << nx << ")" << std::endl;
 }

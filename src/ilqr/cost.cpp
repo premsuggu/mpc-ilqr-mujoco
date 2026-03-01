@@ -6,8 +6,9 @@ namespace ilqr {
 // Core Cost Functions - Take residuals only
 // ============================================================================
 
-// State cost: quadratic only (LQR design)
-double StateCost(const Eigen::VectorXd& x_err, const Eigen::MatrixXd& Q) {
+// Posture cost: penalises joint angles qpos[7:nq] from reference (Quadratic).
+// Q has non-zero entries only at indices [7:nq]; base DOF and velocities are zero.
+double PostureCost(const Eigen::VectorXd& x_err, const Eigen::MatrixXd& Q) {
     return 0.5 * x_err.transpose() * Q * x_err;
 }
 

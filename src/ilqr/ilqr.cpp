@@ -476,9 +476,9 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
     
     // Running cost
     for (int t = 0; t < N_; ++t) {
-        // State cost
+        // Posture cost (joint angles [7:nq], Quadratic)
         Eigen::VectorXd x_err = x_traj[t] - x_ref[t];
-        total_cost += ilqr::StateCost(x_err, robot_.Q());
+        total_cost += ilqr::PostureCost(x_err, robot_.Q());
         
         // Control cost
         Eigen::VectorXd u_err = u_traj[t] - u_ref[t];
@@ -537,9 +537,9 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         }
     }
     
-    // Terminal cost
+    // Terminal posture cost (joint angles [7:nq], Quadratic)
     Eigen::VectorXd x_err_N = x_traj[N_] - x_ref[N_];
-    total_cost += ilqr::StateCost(x_err_N, robot_.Qf());
+    total_cost += ilqr::PostureCost(x_err_N, robot_.Qf());
     
     // Terminal CoM position cost
     if (robot_.getCoMWeight() > 0.0) {
@@ -828,7 +828,7 @@ void iLQR::addEEVelCostDerivatives(int t) {
             // During stance, penalize velocity (target zero velocity to keep foot planted)
             Eigen::Vector3d ee_vel_ref = Eigen::Vector3d::Zero();
             
-            // Use symbolic derivatives (fast and exact!)
+            // Use symbolic derivatives
             Eigen::VectorXd grad_ee_vel = derivatives_.EEvelGrad(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
             Eigen::MatrixXd hess_ee_vel = derivatives_.EEvelHess(xbar_[t], ee_vel_ref, frame_name, w_ee_vel);
             

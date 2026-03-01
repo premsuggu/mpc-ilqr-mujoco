@@ -10,8 +10,9 @@ namespace ilqr {
 // Core Cost Functions - Clean residual-only interface
 // ============================================================================
 
-// State cost: 0.5 * x_err^T * Q * x_err (always quadratic)
-double StateCost(const Eigen::VectorXd& x_err, const Eigen::MatrixXd& Q);
+// Posture cost: 0.5 * x_err^T * Q * x_err
+// Q has non-zero entries only at joint-angle indices [7:nq] (DeepMind "Posture")
+double PostureCost(const Eigen::VectorXd& x_err, const Eigen::MatrixXd& Q);
 
 // Control cost: 0.5 * u_err^T * R * u_err (always quadratic)
 double ControlCost(const Eigen::VectorXd& u_err, const Eigen::MatrixXd& R);
