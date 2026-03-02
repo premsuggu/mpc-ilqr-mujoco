@@ -410,14 +410,31 @@ inline Eigen::Vector3d computeTorsoZAxis(const Eigen::VectorXd& x) {
     );
 }
 
-// Compute capture point for balance cost
-inline Eigen::Vector2d computeCapturePoint(const Eigen::VectorXd& x, const Eigen::Vector3d& p_com, int nq, double g = 9.81) {
-    Eigen::Vector3d v_com(x(nq), x(nq+1), x(nq+2));
-    double omega = std::sqrt(std::max(p_com(2), 0.01) / g);  // Prevent division by zero
+// Capture point: CP = com_xy + 0.3 * base_vel_xy (DeepMind fixed constant, world frame)
+// x[nq+0], x[nq+1] = world-frame base linear velocity (MuJoCo convention)
+inline Eigen::Vector2d computeCapturePoint(const Eigen::VectorXd& x, const Eigen::Vector3d& p_com, int nq) {
     return Eigen::Vector2d(
-        p_com(0) + v_com(0) * omega,
-        p_com(1) + v_com(1) * omega
+        p_com(0) + x(nq + 0) * 0.3,
+        p_com(1) + x(nq + 1) * 0.3
     );
+}
+
+// Project capture point onto foot line segment [foot_l, foot_r] (clamp t in [0,1])
+// Single-stance: pass same point for both endpoints
+inline Eigen::Vector2d computePCP(const Eigen::Vector2d& cp,
+                                   const Eigen::Vector2d& foot_l,
+                                   const Eigen::Vector2d& foot_r) {
+    Eigen::Vector2d seg = foot_r - foot_l;
+    double len_sq = seg.squaredNorm();
+    if (len_sq < 1e-6) return foot_l;
+    double t = std::clamp((cp - foot_l).dot(seg) / len_sq, 0.0, 1.0);
+    return foot_l + t * seg;
+}
+
+// Standing factor S = z / sqrt(z^2 + 0.45^2) - 0.4  (DeepMind walk.cc)
+// Positive only when robot is sufficiently upright; gates balance and walk costs
+inline double computeSfactor(double z_torso) {
+    return z_torso / std::sqrt(z_torso * z_torso + 0.45 * 0.45) - 0.4;
 }
 
 // Compute support center from stance feet
@@ -435,7 +452,7 @@ inline Eigen::Vector2d computeSupportCenter(const RobotUtils& robot, int t) {
     } else if (left_stance) {
         Eigen::Vector3d left_foot = robot.getEEReference(t, 0);
         return left_foot.head<2>();
-    } else {  // right_stance only
+    } else {                            // right_stance only
         Eigen::Vector3d right_foot = robot.getEEReference(t, 1);
         return right_foot.head<2>();
     }
@@ -482,17 +499,25 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
             total_cost += ilqr::uprightCost(residual, robot_.getUprightWeight(), getNormParams(norm_params_, "upright"));
         }
         
-        // Balance cost
+        // Balance cost: S*(CP - PCP), DeepMind formula
         if (robot_.getBalanceWeight() > 0.0) {
             bool left_stance = robot_.isStance(0, t);
             bool right_stance = robot_.isStance(1, t);
             
             if (left_stance || right_stance) {
-                Eigen::Vector3d p_com = robot_.computeCoM(x_traj[t]);
-                Eigen::Vector2d p_support = computeSupportCenter(robot_, t);
-                Eigen::Vector2d p_cp = computeCapturePoint(x_traj[t], p_com, robot_.nq());
-                Eigen::Vector2d residual = p_cp - p_support;
-                total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
+                double S = computeSfactor(x_traj[t](2));
+                if (S > 0.0) {
+                    Eigen::Vector3d p_com = robot_.computeCoM(x_traj[t]);
+                    Eigen::Vector2d p_cp = computeCapturePoint(x_traj[t], p_com, robot_.nq());
+                    // Single-stance: both segment endpoints collapse to the stance foot
+                    Eigen::Vector2d foot_l = left_stance  ? robot_.getEEReference(t, 0).head<2>()
+                                                          : robot_.getEEReference(t, 1).head<2>();
+                    Eigen::Vector2d foot_r = right_stance ? robot_.getEEReference(t, 1).head<2>()
+                                                          : robot_.getEEReference(t, 0).head<2>();
+                    Eigen::Vector2d pcp = computePCP(p_cp, foot_l, foot_r);
+                    Eigen::Vector2d residual = S * (p_cp - pcp);
+                    total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
+                }
             }
         }
     }
@@ -519,17 +544,24 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         total_cost += ilqr::uprightCost(residual, robot_.getUprightWeight(), getNormParams(norm_params_, "upright"));
     }
     
-    // Terminal balance cost
+    // Terminal balance cost: S*(CP - PCP)
     if (robot_.getBalanceWeight() > 0.0) {
         bool left_stance = robot_.isStance(0, N_);
         bool right_stance = robot_.isStance(1, N_);
         
         if (left_stance || right_stance) {
-            Eigen::Vector3d p_com = robot_.computeCoM(x_traj[N_]);
-            Eigen::Vector2d p_support = computeSupportCenter(robot_, N_);
-            Eigen::Vector2d p_cp = computeCapturePoint(x_traj[N_], p_com, robot_.nq());
-            Eigen::Vector2d residual = p_cp - p_support;
-            total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
+            double S = computeSfactor(x_traj[N_](2));
+            if (S > 0.0) {
+                Eigen::Vector3d p_com = robot_.computeCoM(x_traj[N_]);
+                Eigen::Vector2d p_cp = computeCapturePoint(x_traj[N_], p_com, robot_.nq());
+                Eigen::Vector2d foot_l = left_stance  ? robot_.getEEReference(N_, 0).head<2>()
+                                                      : robot_.getEEReference(N_, 1).head<2>();
+                Eigen::Vector2d foot_r = right_stance ? robot_.getEEReference(N_, 1).head<2>()
+                                                      : robot_.getEEReference(N_, 0).head<2>();
+                Eigen::Vector2d pcp = computePCP(p_cp, foot_l, foot_r);
+                Eigen::Vector2d residual = S * (p_cp - pcp);
+                total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
+            }
         }
     }
     
@@ -764,37 +796,32 @@ void iLQR::addBalanceCostDerivatives(int t) {
     const double w_balance = robot_.getBalanceWeight();
     if (w_balance <= 0.0) return;
     
-    // Compute support center dynamically based on contact state
-    Eigen::Vector2d p_support;
-    bool left_stance = robot_.isStance(0, t);   // ee_idx=0 is left foot
+    bool left_stance  = robot_.isStance(0, t);  // ee_idx=0 is left foot
     bool right_stance = robot_.isStance(1, t);  // ee_idx=1 is right foot
+    if (!left_stance && !right_stance) return;  // aerial phase
     
-    if (left_stance && right_stance) {
-        // Both feet in stance: support center is average of foot positions
-        Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
-        Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
-        p_support(0) = 0.5 * (left_foot(0) + right_foot(0));
-        p_support(1) = 0.5 * (left_foot(1) + right_foot(1));
-    } else if (left_stance) {
-        // Only left foot in stance
-        Eigen::Vector3d left_foot = robot_.getEEReference(t, 0);
-        p_support(0) = left_foot(0);
-        p_support(1) = left_foot(1);
-    } else if (right_stance) {
-        // Only right foot in stance
-        Eigen::Vector3d right_foot = robot_.getEEReference(t, 1);
-        p_support(0) = right_foot(0);
-        p_support(1) = right_foot(1);
-    } else {
-        // No feet in stance (aerial phase) - skip balance cost
-        return;
-    }
+    // Standing factor S: gates balance cost (DeepMind walk.cc formula)
+    double S = computeSfactor(xbar_[t](2));     // x[2] = torso z in MuJoCo state
+    if (S <= 0.0) return;                       // crouching — zero contribution
     
-    // Compute balance cost derivatives
-    Eigen::VectorXd grad_balance = derivatives_.BalanceGrad(xbar_[t], p_support, w_balance);
-    Eigen::MatrixXd hess_balance = derivatives_.BalanceHess(xbar_[t], p_support, w_balance);
+    // Capture point: com_xy + 0.3 * base_vel_xy (world frame, MuJoCo x[nq+0/1])
+    Eigen::Vector3d p_com = robot_.computeCoM(xbar_[t]);
+    Eigen::Vector2d p_cp = computeCapturePoint(xbar_[t], p_com, robot_.nq());
     
-    // Add to cost quadratics
+    // Projected capture point onto foot segment (single-stance: both endpoints = stance foot)
+    Eigen::Vector2d foot_l = left_stance  ? robot_.getEEReference(t, 0).head<2>()
+                                          : robot_.getEEReference(t, 1).head<2>();
+    Eigen::Vector2d foot_r = right_stance ? robot_.getEEReference(t, 1).head<2>()
+                                          : robot_.getEEReference(t, 0).head<2>();
+    Eigen::Vector2d pcp = computePCP(p_cp, foot_l, foot_r);
+    
+    // Effective weight absorbs S^2 since residual = S*(CP-PCP) and norm is applied to residual
+    // d/dx[w * rho(S*r)]  ≈  d/dx[(S^2 * w) * rho(r)]  at the linearization point
+    double effective_weight = w_balance * S * S;
+    
+    Eigen::VectorXd grad_balance = derivatives_.BalanceGrad(xbar_[t], pcp, effective_weight);
+    Eigen::MatrixXd hess_balance = derivatives_.BalanceHess(xbar_[t], pcp, effective_weight);
+    
     lx_[t] += grad_balance;
     lxx_[t] += hess_balance;
 }

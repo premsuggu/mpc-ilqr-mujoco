@@ -34,9 +34,9 @@ double uprightCost(const Eigen::Vector3d& residual, double weight, const NormPar
     return 0.5 * weight * applyNorm(residual, norm);
 }
 
-// Balance cost: capture point stability (0.5 factor for original behavior)
+// Balance cost: S*(CP - PCP) residual, DeepMind exact formula (no 0.5 factor)
 double balanceCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm) {
-    return 0.5 * weight * applyNorm(residual, norm);
+    return weight * applyNorm(residual, norm);
 }
 
 // ============================================================================
@@ -56,7 +56,7 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
 }
 
 ::casadi::SX balanceCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
-    return 0.5 * weight * applyNorm(residual, norm);
+    return weight * applyNorm(residual, norm);
 }
 
 } // namespace ilqr

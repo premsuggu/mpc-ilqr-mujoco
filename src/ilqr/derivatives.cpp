@@ -377,86 +377,21 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
         q_ad[i] = x_sym_(i);
     }
     
-    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state
-    casadi::SX qx = x_sym_(3);
-    casadi::SX qy = x_sym_(4);
-    casadi::SX qz = x_sym_(5);
-    casadi::SX qw = x_sym_(6);
+    // World-frame base linear velocity is at x[nq+0], x[nq+1] in both MuJoCo and Pinocchio
+    // states (convertMuJoCoToPinocchio only swaps quaternion order, not velocity frame).
+    // No rotation matrix or Jacobian needed — numerically stable.
+    casadi::SX vcom_x = x_sym_(model_.nq + 0);
+    casadi::SX vcom_y = x_sym_(model_.nq + 1);
     
-    // Build rotation matrix R_WB from quaternion (world to body)
-    casadi::SX qw2 = qw * qw;
-    casadi::SX qx2 = qx * qx;
-    casadi::SX qy2 = qy * qy;
-    casadi::SX qz2 = qz * qz;
-    
-    casadi::SX R_00 = qw2 + qx2 - qy2 - qz2;
-    casadi::SX R_01 = 2 * (qx * qy - qw * qz);
-    casadi::SX R_02 = 2 * (qx * qz + qw * qy);
-    casadi::SX R_10 = 2 * (qx * qy + qw * qz);
-    casadi::SX R_11 = qw2 - qx2 + qy2 - qz2;
-    casadi::SX R_12 = 2 * (qy * qz - qw * qx);
-    casadi::SX R_20 = 2 * (qx * qz - qw * qy);
-    casadi::SX R_21 = 2 * (qy * qz + qw * qx);
-    casadi::SX R_22 = qw2 - qx2 - qy2 + qz2;
-    
-    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
-    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
-    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
-    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
-    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
-    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
-    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
-    
-    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
-    casadi::SX v_lin_local_x = R_00 * v_lin_world_x + R_10 * v_lin_world_y + R_20 * v_lin_world_z;
-    casadi::SX v_lin_local_y = R_01 * v_lin_world_x + R_11 * v_lin_world_y + R_21 * v_lin_world_z;
-    casadi::SX v_lin_local_z = R_02 * v_lin_world_x + R_12 * v_lin_world_y + R_22 * v_lin_world_z;
-    
-    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
-    std::vector<casadi::SX> v_pin_vec;
-    v_pin_vec.push_back(v_lin_local_x);
-    v_pin_vec.push_back(v_lin_local_y);
-    v_pin_vec.push_back(v_lin_local_z);
-    v_pin_vec.push_back(v_ang_local_x);
-    v_pin_vec.push_back(v_ang_local_y);
-    v_pin_vec.push_back(v_ang_local_z);
-    for (int i = 6; i < model_.nv; i++) {
-        v_pin_vec.push_back(x_sym_(model_.nq + i));
-    }
-    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
-    
-    // Compute CoM position using forward kinematics
+    // CoM position via FK (stable, no Jacobian needed)
     pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
     pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, false);
     
-    // Extract CoM position components
     casadi::SX pcom_x = ad_data_.com[0][0];
     casadi::SX pcom_y = ad_data_.com[0][1];
-    casadi::SX pcom_z = ad_data_.com[0][2];
     
-    // CRITICAL FIX: Call computeJointJacobians BEFORE jacobianCenterOfMass
-    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
-    pinocchio::jacobianCenterOfMass(ad_model_, ad_data_, q_ad);
-    
-    // Extract CoM Jacobian (3 x nv)
-    casadi::SX J_com = casadi::SX::zeros(3, model_.nv);
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < model_.nv; j++) {
-            J_com(i, j) = ad_data_.Jcom(i, j);
-        }
-    }
-    
-    // Compute CoM velocity: v_com = J_com * v_pin_local
-    casadi::SX com_vel = casadi::SX::mtimes(J_com, v_pin_local_sx);
-    
-    // Extract velocity components
-    casadi::SX vcom_x = com_vel(0);
-    casadi::SX vcom_y = com_vel(1);
-    
-    // Capture point: p_cp = p_com_xy + v_com_xy * sqrt(h_com / g)
-    // Safety clamp to prevent division by zero
-    casadi::SX h_com = casadi::SX::fmax(pcom_z, 0.01);
-    casadi::SX omega_0 = casadi::SX::sqrt(h_com / gravity_);
+    // Fixed CP time constant: 0.3 s (DeepMind walk.cc, not sqrt(h/g))
+    casadi::SX omega_0 = 0.3;
     
     std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
     std::vector<casadi::SX> v_com_xy = {vcom_x, vcom_y};
