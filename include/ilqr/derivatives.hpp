@@ -60,25 +60,21 @@ public:
                                double weight = 1.0);
 
     /**
-     * @brief Compute center-of-mass velocity gradient (cached, fast evaluation)
+     * @brief Compute CoM xy velocity cost gradient (2D, zero target, DeepMind "Velocity")
      * @param x Full state vector [q, v]
-     * @param target_com_vel Target CoM velocity [vx, vy, vz]
      * @param weight Cost weight
      * @return Gradient vector w.r.t. full state [q, v]
      */
-    Eigen::VectorXd CoMVelGrad(const Eigen::VectorXd& x,
-                               const Eigen::Vector3d& target_com_vel,
+    Eigen::VectorXd VelocityGrad(const Eigen::VectorXd& x,
                                double weight = 1.0);
 
     /**
-     * @brief Compute center-of-mass velocity hessian (cached, fast evaluation)
+     * @brief Compute CoM xy velocity cost hessian (2D, zero target, DeepMind "Velocity")
      * @param x Full state vector [q, v]
-     * @param target_com_vel Target CoM velocity [vx, vy, vz]
      * @param weight Cost weight
      * @return Hessian matrix w.r.t. full state [q, v]
      */
-    Eigen::MatrixXd CoMVelHess(const Eigen::VectorXd& x,
-                               const Eigen::Vector3d& target_com_vel,
+    Eigen::MatrixXd VelocityHess(const Eigen::VectorXd& x,
                                double weight = 1.0);
 
     Eigen::VectorXd UprightGrad(const Eigen::VectorXd& x, 
@@ -148,9 +144,9 @@ private:
     bool height_functions_built_;
     
     // CoM velocity cost functions (single instance, separate from position)
-    ::casadi::Function com_vel_grad_fn_;     // CoM velocity gradient function
-    ::casadi::Function com_vel_hess_fn_;     // CoM velocity Hessian function
-    bool com_vel_functions_built_;
+    ::casadi::Function vel_grad_fn_;     // Velocity gradient function
+    ::casadi::Function vel_hess_fn_;     // Velocity Hessian function
+    bool vel_functions_built_;
 
     // Upright cost funtion
     ::casadi::Function upright_grad_fn_;
@@ -175,7 +171,7 @@ private:
     void buildHeightFunctions();
     
     // Helper to build CoM velocity functions (once, separate from position)
-    void buildCoMVelFunctions();
+    void buildVelocityFunctions();
 
     // Helper to build upright cost functions
     void buildUprightFunctions();
@@ -187,8 +183,7 @@ private:
     ::casadi::SX symHeight(const ::casadi::SX& target_z,
                            const ::casadi::SX& weight);
     
-    ::casadi::SX symCoMVel(const ::casadi::SX& target_com_vel,
-                           const ::casadi::SX& weight);
+    ::casadi::SX symVelocity(const ::casadi::SX& weight);
     
     ::casadi::SX symUpright(const ::casadi::SX& weight);
     

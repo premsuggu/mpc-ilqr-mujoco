@@ -21,9 +21,9 @@ double ControlCost(const Eigen::VectorXd& u_err, const Eigen::MatrixXd& R);
 double HeightCost(double residual, double weight, const NormParams& norm);
 ::casadi::SX HeightCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
-// CoM velocity cost: weight * norm(residual)
-double CoMVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm);
-::casadi::SX CoMVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
+// velocity cost: weight * norm(v_com_xy)  [2D, zero target, DeepMind "Velocity"]
+double VelocityCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm);
+::casadi::SX VelocityCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
 // Upright cost: 0.5 * weight * norm(residual)
 double uprightCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm);

@@ -133,7 +133,7 @@ private:
     
     // Symbolic cost derivatives
     void addHeightCostDerivatives(int t, double goal_z);
-    void addCoMVelCostDerivatives(int t);  // SEPARATE velocity tracking
+    void addVelocityCostDerivatives(int t);  // SEPARATE velocity tracking
     void addUprightCostDerivatives(int t);
     void addBalanceCostDerivatives(int t);
 

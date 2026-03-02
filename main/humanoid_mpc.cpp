@@ -149,7 +149,7 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     config.buildCostMatrices(robot.nx(), robot.nu(), robot.nq());
     robot.setCostWeights(config.Q, config.R, config.Qf);
     robot.setHeightWeight(config.mpc.costs.W_height);
-    robot.setCoMVelWeight(config.mpc.costs.W_com_vel);
+    robot.setVelocityWeight(config.mpc.costs.W_vel);
     robot.setUprightWeight(config.mpc.costs.W_upright);
     robot.setBalanceWeight(config.mpc.costs.w_balance);
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);

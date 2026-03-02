@@ -24,8 +24,8 @@ double HeightCost(double residual, double weight, const NormParams& norm) {
     return weight * applyNorm(r, norm);
 }
 
-// CoM velocity cost
-double CoMVelCost(const Eigen::Vector3d& residual, double weight, const NormParams& norm) {
+// CoM velocity cost: 2D xy residual, zero target (DeepMind "Velocity")
+double VelocityCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm) {
     return weight * applyNorm(residual, norm);
 }
 
@@ -47,7 +47,7 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
     return weight * applyNorm(residual, norm);
 }
 
-::casadi::SX CoMVelCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+::casadi::SX VelocityCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
     return weight * applyNorm(residual, norm);
 }
 

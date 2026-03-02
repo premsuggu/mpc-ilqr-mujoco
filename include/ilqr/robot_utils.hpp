@@ -61,8 +61,8 @@ public:
                         const Eigen::MatrixXd& Qf);
     void setHeightWeight(double w) { w_height_ = w; }
     double getHeightWeight() const { return w_height_; }
-    void setCoMVelWeight(double w) { w_com_vel_ = w; }
-    double getCoMVelWeight() const { return w_com_vel_; }
+    void setVelocityWeight(double w) { w_vel_ = w; }
+    double getVelocityWeight() const { return w_vel_; }
     double getUprightWeight() const { return w_upright_; }
     void setUprightWeight(double w) { w_upright_ = w; }
     void setBalanceWeight(double w) { w_balance_ = w; }
@@ -126,7 +126,7 @@ private:
     // Cost matrices
     Eigen::MatrixXd Q_, R_, Qf_;
     double w_height_;  // Height (torso z) tracking weight
-    double w_com_vel_;  // CoM velocity tracking weight (separate from position)
+    double w_vel_;  // Velocity cost weight (world-frame base xy, separate from position)
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
     

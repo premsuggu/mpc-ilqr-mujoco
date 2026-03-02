@@ -40,7 +40,7 @@ mpc:
     # Task-specific weights — used by addXxxCostDerivatives in ilqr.cpp
     # -------------------------------------------------------------------------
     W_height: 5.0            # DeepMind "Height" = 5.0 (Torso z tracking)
-    W_com_vel: 0.625         # DeepMind "Velocity" = 0.625 (CoM velocity tracking)
+    W_vel: 0.625         # DeepMind "Velocity" = 0.625 (CoM velocity tracking)
     W_foot: 1.0              # DeepMind "Pelvis/Feet" = 1.0
     W_foot_vel: 1.0          # DeepMind foot tracking
     W_upright: 5.0           # DeepMind "Upright" = 5.0
@@ -70,7 +70,7 @@ mpc:
       q: 1.0       # Not used for L2
     
     # CoM Velocity - SmoothAbs2Loss with p=0.2, q=4.0
-    com_velocity:
+    velocity:
       type: 7      # SmoothAbs2Loss: (abs(x)^q + p^q)^(1/q) - p
       p: 0.2
       q: 4.0

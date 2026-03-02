@@ -66,7 +66,7 @@ void symDerivatives::buildSymbolicFunctions() {
     
     // Initialize CoM functions flag
     height_functions_built_ = false;
-    com_vel_functions_built_ = false;
+    vel_functions_built_ = false;
     upright_functions_built_ = false;
     balance_functions_built_ = false;
     
@@ -99,30 +99,29 @@ void symDerivatives::buildHeightFunctions() {
     std::cout << "Built cached height functions" << std::endl;
 }
 
-// Build CoM velocity cost functions (SEPARATE from position)
-void symDerivatives::buildCoMVelFunctions() {
-    // Create symbolic input parameters
-    ::casadi::SX target_com_vel_sym = ::casadi::SX::sym("target_com_vel", 3);
+// Build velocity cost functions (world-frame base xy velocity, zero target)
+void symDerivatives::buildVelocityFunctions() {
+    // No target parameter — residual is raw v_base_xy (zero target, DeepMind "Velocity")
     ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
     
     // Use symbolic cost helper
-    ::casadi::SX com_vel_cost = symCoMVel(target_com_vel_sym, weight_sym);
+    ::casadi::SX vel_cost = symVelocity(weight_sym);
     
     // Build gradient and Hessian functions
-    ::casadi::SX com_vel_grad = ::casadi::SX::gradient(com_vel_cost, x_sym_);
-    com_vel_grad_fn_ = ::casadi::Function(
-        "com_vel_grad",
-        {x_sym_, target_com_vel_sym, weight_sym}, {com_vel_grad}
+    ::casadi::SX vel_grad = ::casadi::SX::gradient(vel_cost, x_sym_);
+    vel_grad_fn_ = ::casadi::Function(
+        "vel_grad",
+        {x_sym_, weight_sym}, {vel_grad}
     );
     
-    ::casadi::SX com_vel_hess = ::casadi::SX::jacobian(com_vel_grad, x_sym_);
-    com_vel_hess_fn_ = ::casadi::Function(
-        "com_vel_hess", 
-        {x_sym_, target_com_vel_sym, weight_sym}, {com_vel_hess}
+    ::casadi::SX vel_hess = ::casadi::SX::jacobian(vel_grad, x_sym_);
+    vel_hess_fn_ = ::casadi::Function(
+        "vel_hess", 
+        {x_sym_, weight_sym}, {vel_hess}
     );
     
-    com_vel_functions_built_ = true;
-    std::cout << "Built cached CoM velocity functions" << std::endl;
+    vel_functions_built_ = true;
+    std::cout << "Built cached velocity (2D xy base) functions" << std::endl;
 }
 
 // For keeping the robot upright
@@ -211,27 +210,22 @@ Eigen::MatrixXd symDerivatives::HeightHess(const Eigen::VectorXd& x,
     return hessian;
 }
 
-// CoM Velocity Gradient (SEPARATE from position tracking)
-Eigen::VectorXd symDerivatives::CoMVelGrad(const Eigen::VectorXd& x,
-                                          const Eigen::Vector3d& target_com_vel,
-                                          double weight) {
+Eigen::VectorXd symDerivatives::VelocityGrad(const Eigen::VectorXd& x,
+                                             double weight) {
     
-    // Ensure CoM velocity functions are built
-    if (!com_vel_functions_built_) {
-        buildCoMVelFunctions();
+    // Ensure velocity functions are built
+    if (!vel_functions_built_) {
+        buildVelocityFunctions();
     }
     
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
+    // No Pinocchio quaternion conversion needed — only uses velocity states directly
     // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    std::vector<double> x_vec(x.data(), x.data() + x.size());
     ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_vel_dm = ::casadi::DM({target_com_vel[0], target_com_vel[1], target_com_vel[2]});
     ::casadi::DM weight_dm = ::casadi::DM(weight);
     
     // Evaluate cached function (fast!)
-    ::casadi::DM grad_dm = com_vel_grad_fn_(::casadi::DMVector{x_dm, target_vel_dm, weight_dm})[0];
+    ::casadi::DM grad_dm = vel_grad_fn_(::casadi::DMVector{x_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;
@@ -243,27 +237,23 @@ Eigen::VectorXd symDerivatives::CoMVelGrad(const Eigen::VectorXd& x,
     return gradient;
 }
 
-// CoM Velocity Hessian (SEPARATE from position tracking)
-Eigen::MatrixXd symDerivatives::CoMVelHess(const Eigen::VectorXd& x,
-                                          const Eigen::Vector3d& target_com_vel,
-                                          double weight) {
+// Velocity Hessian (world-frame base xy velocity, zero target)
+Eigen::MatrixXd symDerivatives::VelocityHess(const Eigen::VectorXd& x,
+                                             double weight) {
     
-    // Ensure CoM velocity functions are built
-    if (!com_vel_functions_built_) {
-        buildCoMVelFunctions();
+    // Ensure velocity functions are built
+    if (!vel_functions_built_) {
+        buildVelocityFunctions();
     }
     
-    // Convert MuJoCo state to Pinocchio state (fix quaternion ordering)
-    Eigen::VectorXd x_pinocchio = convertMuJoCoToPinocchio(x, model_.nq);
-    
+    // No Pinocchio quaternion conversion needed — only uses velocity states directly
     // Convert inputs to CasADi format
-    std::vector<double> x_vec(x_pinocchio.data(), x_pinocchio.data() + x_pinocchio.size());
+    std::vector<double> x_vec(x.data(), x.data() + x.size());
     ::casadi::DM x_dm = ::casadi::DM(x_vec);
-    ::casadi::DM target_vel_dm = ::casadi::DM({target_com_vel[0], target_com_vel[1], target_com_vel[2]});
     ::casadi::DM weight_dm = ::casadi::DM(weight);
     
     // Evaluate cached function (fast!)
-    ::casadi::DM hess_dm = com_vel_hess_fn_(::casadi::DMVector{x_dm, target_vel_dm, weight_dm})[0];
+    ::casadi::DM hess_dm = vel_hess_fn_(::casadi::DMVector{x_dm, weight_dm})[0];
     
     // Convert back to Eigen (full state size)
     int nx = model_.nq + model_.nv;
@@ -338,86 +328,18 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     return ilqr::HeightCost(residual, weight, norm);
 }
 
-::casadi::SX symDerivatives::symCoMVel(const ::casadi::SX& target_com_vel,
-                                       const ::casadi::SX& weight) {
-    // Extract q and v from x_sym_
-    typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
-    
-    ConfigVector q_ad(model_.nq);
-    
-    for (int i = 0; i < model_.nq; i++) {
-        q_ad[i] = x_sym_(i);
-    }
-    
-    // Extract quaternion [qx, qy, qz, qw] from Pinocchio state
-    casadi::SX qx = x_sym_(3);
-    casadi::SX qy = x_sym_(4);
-    casadi::SX qz = x_sym_(5);
-    casadi::SX qw = x_sym_(6);
-    
-    // Build rotation matrix R_WB from quaternion (world to body)
-    casadi::SX qw2 = qw * qw;
-    casadi::SX qx2 = qx * qx;
-    casadi::SX qy2 = qy * qy;
-    casadi::SX qz2 = qz * qz;
-    
-    casadi::SX R_00 = qw2 + qx2 - qy2 - qz2;
-    casadi::SX R_01 = 2 * (qx * qy - qw * qz);
-    casadi::SX R_02 = 2 * (qx * qz + qw * qy);
-    casadi::SX R_10 = 2 * (qx * qy + qw * qz);
-    casadi::SX R_11 = qw2 - qx2 + qy2 - qz2;
-    casadi::SX R_12 = 2 * (qy * qz - qw * qx);
-    casadi::SX R_20 = 2 * (qx * qz - qw * qy);
-    casadi::SX R_21 = 2 * (qy * qz + qw * qx);
-    casadi::SX R_22 = qw2 - qx2 - qy2 + qz2;
-    
-    // Extract world-frame linear and local-frame angular velocities from MuJoCo convention
-    casadi::SX v_lin_world_x = x_sym_(model_.nq + 0);
-    casadi::SX v_lin_world_y = x_sym_(model_.nq + 1);
-    casadi::SX v_lin_world_z = x_sym_(model_.nq + 2);
-    casadi::SX v_ang_local_x = x_sym_(model_.nq + 3);
-    casadi::SX v_ang_local_y = x_sym_(model_.nq + 4);
-    casadi::SX v_ang_local_z = x_sym_(model_.nq + 5);
-    
-    // Transform linear velocity to local frame: v_lin_local = R_WB^T * v_lin_world
-    casadi::SX v_lin_local_x = R_00*v_lin_world_x + R_10*v_lin_world_y + R_20*v_lin_world_z;
-    casadi::SX v_lin_local_y = R_01*v_lin_world_x + R_11*v_lin_world_y + R_21*v_lin_world_z;
-    casadi::SX v_lin_local_z = R_02*v_lin_world_x + R_12*v_lin_world_y + R_22*v_lin_world_z;
-    
-    // Assemble v_pin_local = [v_lin_local, v_ang_local, joint_vels]
-    std::vector<casadi::SX> v_pin_vec;
-    v_pin_vec.push_back(v_lin_local_x);
-    v_pin_vec.push_back(v_lin_local_y);
-    v_pin_vec.push_back(v_lin_local_z);
-    v_pin_vec.push_back(v_ang_local_x);
-    v_pin_vec.push_back(v_ang_local_y);
-    v_pin_vec.push_back(v_ang_local_z);
-    for (int i = 6; i < model_.nv; i++) {
-        v_pin_vec.push_back(x_sym_(model_.nq + i));
-    }
-    casadi::SX v_pin_local_sx = casadi::SX::vertcat(v_pin_vec);
-    
-    // CRITICAL FIX: Call computeJointJacobians BEFORE jacobianCenterOfMass
-    pinocchio::computeJointJacobians(ad_model_, ad_data_, q_ad);
-    pinocchio::jacobianCenterOfMass(ad_model_, ad_data_, q_ad);
-    
-    // Extract CoM Jacobian (3 x nv)
-    ::casadi::SX J_com = ::casadi::SX::zeros(3, model_.nv);
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < model_.nv; j++) {
-            J_com(i, j) = ad_data_.Jcom(i, j);
-        }
-    }
-    
-    // Compute CoM velocity: v_com = J_com * v_pin_local
-    ::casadi::SX com_vel = ::casadi::SX::mtimes(J_com, v_pin_local_sx);
-    ::casadi::SX residual = com_vel - target_com_vel;
+::casadi::SX symDerivatives::symVelocity(const ::casadi::SX& weight) {
+    // World-frame base linear velocity is directly in the MuJoCo state at x[nq+0], x[nq+1].
+    // This mirrors DeepMind's use of torso_velocity (world frame xy).
+    ::casadi::SX vx = x_sym_(model_.nq + 0);
+    ::casadi::SX vy = x_sym_(model_.nq + 1);
+    ::casadi::SX residual = ::casadi::SX::vertcat({vx, vy});
     
     // Get norm params from configuration
-    ilqr::NormParams norm = norm_params_.count("com_velocity") > 0 
-        ? norm_params_.at("com_velocity")
+    ilqr::NormParams norm = norm_params_.count("velocity") > 0 
+        ? norm_params_.at("velocity")
         : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-    return ilqr::CoMVelCost(residual, weight, norm);
+    return ilqr::VelocityCost(residual, weight, norm);
 }
 
 ::casadi::SX symDerivatives::symUpright(const ::casadi::SX& weight) {

@@ -165,8 +165,8 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         }
         
         // ADD CoM VELOCITY TRACKING DERIVATIVES if weight > 0 (SEPARATE from position)
-        if (robot_.getCoMVelWeight() > 0.0) {
-            addCoMVelCostDerivatives(t);
+        if (robot_.getVelocityWeight() > 0.0) {
+            addVelocityCostDerivatives(t);
         }
         
         // ADD UPRIGHT COST DERIVATIVES if weight > 0
@@ -470,10 +470,10 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
             total_cost += ilqr::HeightCost(residual, robot_.getHeightWeight(), getNormParams(norm_params_, "height"));
         }
         
-        // CoM velocity cost
-        if (robot_.getCoMVelWeight() > 0.0) {
-            Eigen::Vector3d residual = robot_.computeCoMVelocity(x_traj[t]) - robot_.getCoMVelReference(t);
-            total_cost += ilqr::CoMVelCost(residual, robot_.getCoMVelWeight(), getNormParams(norm_params_, "com_velocity"));
+        // Velocity cost: 2D world-frame base xy velocity, zero target
+        if (robot_.getVelocityWeight() > 0.0) {
+            Eigen::Vector2d residual = x_traj[t].segment(robot_.nq(), 2);
+            total_cost += ilqr::VelocityCost(residual, robot_.getVelocityWeight(), getNormParams(norm_params_, "velocity"));
         }
         
         // Upright cost
@@ -507,10 +507,10 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         total_cost += ilqr::HeightCost(residual, robot_.getHeightWeight(), getNormParams(norm_params_, "height"));
     }
     
-    // Terminal CoM velocity cost
-    if (robot_.getCoMVelWeight() > 0.0) {
-        Eigen::Vector3d residual = robot_.computeCoMVelocity(x_traj[N_]) - robot_.getCoMVelReference(N_);
-        total_cost += ilqr::CoMVelCost(residual, robot_.getCoMVelWeight(), getNormParams(norm_params_, "com_velocity"));
+    // Terminal velocity cost: 2D world-frame base xy velocity, zero target
+    if (robot_.getVelocityWeight() > 0.0) {
+        Eigen::Vector2d residual = x_traj[N_].segment(robot_.nq(), 2);
+        total_cost += ilqr::VelocityCost(residual, robot_.getVelocityWeight(), getNormParams(norm_params_, "velocity"));
     }
     
     // Terminal upright cost
@@ -726,26 +726,24 @@ void iLQR::addHeightCostDerivatives(int t, double goal_z) {
     lxx_[t] += hess_height;
 }
 
-// CoM Velocity Cost Derivatives (SEPARATE from position tracking)
-void iLQR::addCoMVelCostDerivatives(int t) {
-    const double w_com_vel = robot_.getCoMVelWeight();
+// Velocity Cost Derivatives — 2D world-frame base xy velocity, zero target (DeepMind "Velocity")
+void iLQR::addVelocityCostDerivatives(int t) {
+    const double w_vel = robot_.getVelocityWeight();
     
     // Skip if weight is zero (disabled)
-    if (w_com_vel <= 0.0) return;
+    if (w_vel <= 0.0) return;
     
     try {
-        Eigen::Vector3d com_vel_ref = robot_.getCoMVelReference(t);
-        
-        // Use symbolic derivatives (fast and exact!)
-        Eigen::VectorXd grad_com_vel = derivatives_.CoMVelGrad(xbar_[t], com_vel_ref, w_com_vel);
-        Eigen::MatrixXd hess_com_vel = derivatives_.CoMVelHess(xbar_[t], com_vel_ref, w_com_vel);
+        // No reference needed — residual is raw base v_xy
+        Eigen::VectorXd grad_vel = derivatives_.VelocityGrad(xbar_[t], w_vel);
+        Eigen::MatrixXd hess_vel = derivatives_.VelocityHess(xbar_[t], w_vel);
         
         // Add to cost quadratics
-        lx_[t] += grad_com_vel;
-        lxx_[t] += hess_com_vel;
+        lx_[t] += grad_vel;
+        lxx_[t] += hess_vel;
         
     } catch (const std::exception& e) {
-        std::cerr << "Warning: CoM velocity cost error at t=" << t << ": " << e.what() << std::endl;
+        std::cerr << "Warning: Velocity cost error at t=" << t << ": " << e.what() << std::endl;
     }
 }
 
