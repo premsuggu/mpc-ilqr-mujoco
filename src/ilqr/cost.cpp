@@ -59,6 +59,17 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
     return weight * applyNorm(residual, norm);
 }
 
+// Walk cost: 1D scalar, SmoothAbs2Loss p=0.5, q=3.0
+double WalkCost(double residual, double weight, const NormParams& norm) {
+    Eigen::VectorXd r(1);
+    r(0) = residual;
+    return weight * applyNorm(r, norm);
+}
+
+::casadi::SX WalkCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
+}
+
 // Pelvis/Feet cost: one-sided penalty for pelvis dropping toward foot height
 double PelvisFeetCost(double residual, double weight, const NormParams& norm) {
     Eigen::VectorXd r(1);

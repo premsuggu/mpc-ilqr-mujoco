@@ -137,6 +137,7 @@ private:
     void addUprightCostDerivatives(int t);
     void addBalanceCostDerivatives(int t);
     void addPelvisFeetCostDerivatives(int t);
+    void addWalkCostDerivatives(int t);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

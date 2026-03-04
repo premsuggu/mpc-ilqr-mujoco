@@ -60,6 +60,13 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
         robot_.getRightFootBodyName(),
         robot_.getLeftFootBodyName()
     );
+    derivatives_.setWalkBodyNames(
+        robot_.getTorsoBodyName(),
+        robot_.getPelvisBodyName(),
+        robot_.getRightFootBodyName(),
+        robot_.getLeftFootBodyName(),
+        robot_.getWaistLowerBodyName()
+    );
 }
 
 void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
@@ -189,6 +196,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         if (robot_.getPelvisFeetWeight() > 0.0) {
             addPelvisFeetCostDerivatives(t);
         }
+
+        // ADD WALK COST DERIVATIVES if weight > 0
+        if (robot_.getWalkWeight() > 0.0) {
+            addWalkCostDerivatives(t);
+        }
         
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
@@ -232,6 +244,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     // ADD TERMINAL PELVIS/FEET COST DERIVATIVES if weight > 0
     if (robot_.getPelvisFeetWeight() > 0.0) {
         addPelvisFeetCostDerivatives(N_);
+    }
+
+    // ADD TERMINAL WALK COST DERIVATIVES if weight > 0
+    if (robot_.getWalkWeight() > 0.0) {
+        addWalkCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -544,6 +561,23 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
             double residual = 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;
             total_cost += ilqr::PelvisFeetCost(residual, robot_.getPelvisFeetWeight(), getNormParams(norm_params_, "pelvis_feet"));
         }
+        // Walk cost: S*(v_forward - speed_goal)
+        if (robot_.getWalkWeight() > 0.0) {
+            double S = computeSfactor(x_traj[t](2));
+            if (S > 0.0) {
+                Eigen::Vector2d fsum =
+                    robot_.computeBodyXAxis(x_traj[t], robot_.getTorsoBodyName()).head<2>()
+                  + robot_.computeBodyXAxis(x_traj[t], robot_.getPelvisBodyName()).head<2>()
+                  + robot_.computeBodyXAxis(x_traj[t], robot_.getRightFootBodyName()).head<2>()
+                  + robot_.computeBodyXAxis(x_traj[t], robot_.getLeftFootBodyName()).head<2>();
+                double fnorm = fsum.norm();
+                if (fnorm < 1e-6) fnorm = 1.0;
+                Eigen::Vector2d forward = fsum / fnorm;
+                Eigen::Vector2d com_vel = x_traj[t].segment(robot_.nq(), 2);
+                double residual = S * (com_vel.dot(forward) - robot_.getSpeedGoal());
+                total_cost += ilqr::WalkCost(residual, robot_.getWalkWeight(), getNormParams(norm_params_, "walk"));
+            }
+        }
     }
 
     // Terminal posture cost (joint angles [7:nq], Quadratic)
@@ -596,6 +630,26 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         double z_foot_l = robot_.computeBodyZPos(x_traj[N_], robot_.getLeftFootBodyName());
         double residual = 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;
         total_cost += ilqr::PelvisFeetCost(residual, robot_.getPelvisFeetWeight(), getNormParams(norm_params_, "pelvis_feet"));
+    }
+    // Terminal walk cost
+    // Terminal walk cost: DeepMind exact formula (walk.cc:138-143)
+    if (robot_.getWalkWeight() > 0.0) {
+        double S = computeSfactor(x_traj[N_](2));
+        if (S > 0.0) {
+            Eigen::Vector2d fsum =
+                robot_.computeBodyXAxis(x_traj[N_], robot_.getTorsoBodyName()).head<2>()
+              + robot_.computeBodyXAxis(x_traj[N_], robot_.getPelvisBodyName()).head<2>()
+              + robot_.computeBodyXAxis(x_traj[N_], robot_.getRightFootBodyName()).head<2>()
+              + robot_.computeBodyXAxis(x_traj[N_], robot_.getLeftFootBodyName()).head<2>();
+            double fnorm = fsum.norm();
+            if (fnorm < 1e-6) fnorm = 1.0;
+            Eigen::Vector2d forward   = fsum / fnorm;
+            Eigen::Vector2d waist_vel = robot_.computeSubtreeLinVel2d(x_traj[N_], robot_.getWaistLowerBodyName());
+            Eigen::Vector2d torso_vel = x_traj[N_].segment(robot_.nq(), 2);
+            Eigen::Vector2d com_vel   = 0.5 * (waist_vel + torso_vel);
+            double residual = S * (com_vel.dot(forward) - robot_.getSpeedGoal());
+            total_cost += ilqr::WalkCost(residual, robot_.getWalkWeight(), getNormParams(norm_params_, "walk"));
+        }
     }
     
     // Constraint costs
@@ -865,5 +919,16 @@ void iLQR::addPelvisFeetCostDerivatives(int t) {
     Eigen::VectorXd grad = derivatives_.PelvisFeetGrad(xbar_[t], w);
     Eigen::MatrixXd hess = derivatives_.PelvisFeetHess(xbar_[t], w);
     lx_[t] += grad;
+    lxx_[t] += hess;
+}
+
+void iLQR::addWalkCostDerivatives(int t) {
+    const double w = robot_.getWalkWeight();
+    if (w == 0.0) return;
+    double S = computeSfactor(xbar_[t](2));
+    if (S <= 0.0) return;
+    Eigen::VectorXd grad = derivatives_.WalkGrad(xbar_[t], w, S, robot_.getSpeedGoal());
+    Eigen::MatrixXd hess = derivatives_.WalkHess(xbar_[t], w, S, robot_.getSpeedGoal());
+    lx_[t]  += grad;
     lxx_[t] += hess;
 }

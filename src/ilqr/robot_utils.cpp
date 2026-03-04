@@ -14,8 +14,10 @@ RobotUtils::RobotUtils()
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
       nx_(0), nu_(0), dt_(0.01), w_height_(0.0), w_vel_(0.0),
       w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0), w_balance_(0.0),
-      w_pelvis_feet_(0.0),
-      left_foot_body_name_("foot_left"), right_foot_body_name_("foot_right"), pelvis_body_name_("pelvis"),
+      w_pelvis_feet_(0.0), w_walk_(0.0), speed_goal_(0.0),
+      left_foot_body_name_("foot_left"), right_foot_body_name_("foot_right"),
+      pelvis_body_name_("pelvis"), torso_body_name_("torso"),
+      waist_lower_body_name_("waist_lower"),
       linearization_epsilon_(1e-4) { 
 }
 
@@ -1116,4 +1118,35 @@ double RobotUtils::computeBodyZPos(const Eigen::VectorXd& x, const std::string& 
     const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
     mj_kinematics(model_, data_temp_);
     return data_temp_->xpos[3 * body_id + 2];
+}
+
+// World-frame x-axis (column 0) of a named body's rotation matrix.
+// MuJoCo xmat is row-major 3x3: column 0 = [R[0], R[3], R[6]]
+Eigen::Vector3d RobotUtils::computeBodyXAxis(const Eigen::VectorXd& x, const std::string& body_name) const {
+    int body_id = mj_name2id(model_, mjOBJ_BODY, body_name.c_str());
+    if (body_id < 0) {
+        std::cerr << "WARNING: Body '" << body_name << "' not found in model" << std::endl;
+        return Eigen::Vector3d(1, 0, 0);  // fallback: world x-axis
+    }
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_kinematics(model_, data_temp_);
+    const mjtNum* R = data_temp_->xmat + 9 * body_id;  // row-major 3x3
+    return Eigen::Vector3d(R[0], R[3], R[6]);  // column 0 = body x-axis in world frame
+}
+
+// World-frame xy subtree CoM linear velocity of a named body.
+// DeepMind: "waist_lower_subcomvel" = subtreelinvel sensor on waist_lower body.
+// MuJoCo computes data->subtreelinvel[3*body_id : 3*body_id+3] in mj_kinematics.
+Eigen::Vector2d RobotUtils::computeSubtreeLinVel2d(const Eigen::VectorXd& x, const std::string& body_name) const {
+    int body_id = mj_name2id(model_, mjOBJ_BODY, body_name.c_str());
+    if (body_id < 0) {
+        std::cerr << "WARNING: Body '" << body_name << "' not found for subtreeLinVel" << std::endl;
+        // Fallback: use base linear velocity (torso approx)
+        return x.segment(model_->nq, 2);
+    }
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_kinematics(model_, data_temp_);
+    // subtree_linvel: world-frame CoM velocity of subtree rooted at body_id
+    const mjtNum* v = data_temp_->subtree_linvel + 3 * body_id;
+    return Eigen::Vector2d(v[0], v[1]);
 }

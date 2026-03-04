@@ -26,7 +26,17 @@ Config loadConfigFromFile(const std::string& filepath) {
         if (yaml_node["robot"]["pelvis_body_name"]) {
             config.pelvis_body_name = yaml_node["robot"]["pelvis_body_name"].as<std::string>();
         } else {
-            config.pelvis_body_name = "pelvis";         // Default for DM humanoid
+            config.pelvis_body_name = "pelvis";
+        }
+        if (yaml_node["robot"]["torso_body_name"]) {
+            config.torso_body_name = yaml_node["robot"]["torso_body_name"].as<std::string>();
+        } else {
+            config.torso_body_name = "torso";   // Default for DM humanoid
+        }
+        if (yaml_node["robot"]["waist_lower_body_name"]) {
+            config.waist_lower_body_name = yaml_node["robot"]["waist_lower_body_name"].as<std::string>();
+        } else {
+            config.waist_lower_body_name = "waist_lower";  // Default for DM humanoid
         }
         
         config.q_ref_path = yaml_node["reference_trajectory"]["q_ref"].as<std::string>();
@@ -60,12 +70,12 @@ Config loadConfigFromFile(const std::string& filepath) {
 
         // Task-specific weights
         config.mpc.costs.W_height   = costs_node["W_height"].as<double>();
-        config.mpc.costs.W_vel  = costs_node["W_vel"].as<double>();
-        config.mpc.costs.W_foot     = costs_node["W_foot"].as<double>();
-        config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
+        config.mpc.costs.W_vel      = costs_node["W_vel"].as<double>();
         config.mpc.costs.W_upright     = costs_node["W_upright"].as<double>();
         config.mpc.costs.w_balance     = costs_node["w_balance"].as<double>();
         config.mpc.costs.W_pelvis_feet = costs_node["W_pelvis_feet"].as<double>(1.0);
+        config.mpc.costs.W_walk        = costs_node["W_walk"].as<double>(1.0);
+        config.mpc.costs.speed_goal    = costs_node["speed_goal"].as<double>(0.0);
         
         // Load constraints
         auto constraints_node = mpc_node["constraints"];

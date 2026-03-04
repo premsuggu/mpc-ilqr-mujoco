@@ -39,4 +39,9 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
 double PelvisFeetCost(double residual, double weight, const NormParams& norm);
 ::casadi::SX PelvisFeetCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
+// Walk cost: weight * norm(S*(v_forward - speed_goal))  [1D scalar, DeepMind "Walk"]
+// forward = normalized average of x-axes of torso/pelvis/feet; S = standing factor
+double WalkCost(double residual, double weight, const NormParams& norm);
+::casadi::SX WalkCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
+
 } // namespace ilqr

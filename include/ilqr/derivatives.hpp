@@ -140,6 +140,25 @@ public:
     Eigen::VectorXd PelvisFeetGrad(const Eigen::VectorXd& x, double w);
     Eigen::MatrixXd PelvisFeetHess(const Eigen::VectorXd& x, double w);
 
+    /**
+     * @brief Set body names for the Walk cost (4 forward-dir bodies + waist_lower for com_vel).
+     * DeepMind walk.cc: com_vel = 0.5*(subtreelinvel(waist_lower) + framevelinvel(torso))
+     * @param torso        Floating-base body, e.g. "torso"
+     * @param pelvis       Pelvis body,  e.g. "pelvis"
+     * @param foot_r       Right foot,   e.g. "foot_right"
+     * @param foot_l       Left foot,    e.g. "foot_left"
+     * @param waist_lower  Body whose subtree CoM vel is averaged with torso vel, e.g. "waist_lower"
+     */
+    void setWalkBodyNames(const std::string& torso,
+                          const std::string& pelvis,
+                          const std::string& foot_r,
+                          const std::string& foot_l,
+                          const std::string& waist_lower);
+
+    // WalkGrad/Hess: S is the standing factor applied externally, speed_goal from config
+    Eigen::VectorXd WalkGrad(const Eigen::VectorXd& x, double w, double S, double speed_goal);
+    Eigen::MatrixXd WalkHess(const Eigen::VectorXd& x, double w, double S, double speed_goal);
+
     // Make data accessible to validation functions
     pinocchio::Model model_;
     pinocchio::Data data_;
@@ -178,6 +197,16 @@ private:
     std::string pf_pelvis_body_;  // e.g. "pelvis"
     std::string pf_foot_r_body_;  // e.g. "foot_right"
     std::string pf_foot_l_body_;  // e.g. "foot_left"
+
+    // Walk cost functions (forward velocity toward speed_goal)
+    ::casadi::Function walk_grad_fn_;
+    ::casadi::Function walk_hess_fn_;
+    bool walk_functions_built_;
+    std::string walk_torso_body_;         // e.g. "torso"
+    std::string walk_pelvis_body_;        // e.g. "pelvis"
+    std::string walk_foot_r_body_;        // e.g. "foot_right"
+    std::string walk_foot_l_body_;        // e.g. "foot_left"
+    std::string walk_waist_lower_body_;   // e.g. "waist_lower" — for com_vel computation
     
     // State dimensions (cached for efficiency)
     int nx_;  // Full state size (nq + nv)
@@ -202,6 +231,9 @@ private:
     
     // Helper to build pelvis/feet cost functions
     void buildPelvisFeetFunctions();
+
+    // Helper to build walk cost functions
+    void buildWalkFunctions();
     
     // Symbolic cost expression helpers 
     ::casadi::SX symHeight(const ::casadi::SX& target_z,
@@ -215,6 +247,13 @@ private:
                             const ::casadi::SX& weight);
     
     ::casadi::SX symPelvisFeet(const ::casadi::SX& weight);
+
+    // symWalk helpers
+    ::casadi::SX symWalkResidual(const ::casadi::SX& s_sym,
+                                  const ::casadi::SX& speed_goal_sym);
+    ::casadi::SX symWalk(const ::casadi::SX& weight,
+                         const ::casadi::SX& s_sym,
+                         const ::casadi::SX& speed_goal_sym);
                             
     // Norm parameters for each cost term
     std::map<std::string, ilqr::NormParams> norm_params_;

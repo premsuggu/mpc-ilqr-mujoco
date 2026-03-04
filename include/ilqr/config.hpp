@@ -17,9 +17,11 @@ struct CostWeights {
     double R_control;
 
     // Task-specific weights (used by addXxxCostDerivatives in ilqr.cpp)
-    double W_height, W_vel, W_foot, W_foot_vel;
+    double W_height, W_vel;
     double W_upright, w_balance;
     double W_pelvis_feet;        // DeepMind "Pelvis/Feet" = 1.0
+    double W_walk;               // DeepMind "Walk" = 1.0
+    double speed_goal;           // Target forward speed (m/s); 0.0 = standing task
 };
 
 // Struct to hold MPC parameters
@@ -67,7 +69,9 @@ struct Config {
     // End-effector body names (loaded from config.yaml)
     std::string left_foot_body_name;
     std::string right_foot_body_name;
-    std::string pelvis_body_name;    // Body for Pelvis/Feet cost z-position (e.g. "pelvis")
+    std::string pelvis_body_name;       // Body for Pelvis/Feet cost z-position (e.g. "pelvis")
+    std::string torso_body_name;        // Floating-base body for Walk forward direction (e.g. "torso")
+    std::string waist_lower_body_name;  // Body for Walk com_vel: 0.5*(subtreeLinVel+torso_vel)
     
     MpcParams mpc;
     

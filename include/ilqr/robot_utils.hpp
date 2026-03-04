@@ -69,13 +69,21 @@ public:
     double getBalanceWeight() const { return w_balance_; }
     void setPelvisFeetWeight(double w) { w_pelvis_feet_ = w; }
     double getPelvisFeetWeight() const { return w_pelvis_feet_; }
+    void setWalkWeight(double w)       { w_walk_ = w; }
+    double getWalkWeight()       const { return w_walk_; }
+    void setSpeedGoal(double sg)       { speed_goal_ = sg; }
+    double getSpeedGoal()        const { return speed_goal_; }
     // Body name setters/getters (Pelvis/Feet cost, config-driven, robot-agnostic)
-    void setLeftFootBodyName(const std::string& n)  { left_foot_body_name_ = n; }
-    void setRightFootBodyName(const std::string& n) { right_foot_body_name_ = n; }
-    void setPelvisBodyName(const std::string& n)    { pelvis_body_name_ = n; }
-    const std::string& getLeftFootBodyName()  const { return left_foot_body_name_; }
-    const std::string& getRightFootBodyName() const { return right_foot_body_name_; }
-    const std::string& getPelvisBodyName()    const { return pelvis_body_name_; }
+    void setLeftFootBodyName(const std::string& n)       { left_foot_body_name_ = n; }
+    void setRightFootBodyName(const std::string& n)      { right_foot_body_name_ = n; }
+    void setPelvisBodyName(const std::string& n)         { pelvis_body_name_ = n; }
+    void setTorsoBodyName(const std::string& n)          { torso_body_name_ = n; }
+    void setWaistLowerBodyName(const std::string& n)     { waist_lower_body_name_ = n; }
+    const std::string& getLeftFootBodyName()       const { return left_foot_body_name_; }
+    const std::string& getRightFootBodyName()      const { return right_foot_body_name_; }
+    const std::string& getPelvisBodyName()         const { return pelvis_body_name_; }
+    const std::string& getTorsoBodyName()          const { return torso_body_name_; }
+    const std::string& getWaistLowerBodyName()     const { return waist_lower_body_name_; }
     
     // Constraint cost functions
     double constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -139,9 +147,13 @@ private:
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
     double w_pelvis_feet_; // Pelvis/Feet cost weight
-    std::string left_foot_body_name_;   // MuJoCo body name for left foot
-    std::string right_foot_body_name_;  // MuJoCo body name for right foot
-    std::string pelvis_body_name_;      // MuJoCo body name for pelvis
+    double w_walk_;        // Walk cost weight
+    double speed_goal_;    // Target forward speed (m/s)
+    std::string left_foot_body_name_;     // MuJoCo body name for left foot
+    std::string right_foot_body_name_;    // MuJoCo body name for right foot
+    std::string pelvis_body_name_;        // MuJoCo body name for pelvis
+    std::string torso_body_name_;         // MuJoCo body name for torso (Walk forward direction)
+    std::string waist_lower_body_name_;   // MuJoCo body for waist_lower subtree CoM vel (Walk)
     
     // Constraint weights
     double w_joint_limits_;
@@ -171,6 +183,11 @@ public:
     Eigen::Vector3d computeEEVel(const Eigen::VectorXd& x, int ee_idx) const;
     // World-frame z-position of a named MuJoCo body (for Pelvis/Feet cost)
     double computeBodyZPos(const Eigen::VectorXd& x, const std::string& body_name) const;
+    // World-frame x-axis (column 0 of xmat) of a named MuJoCo body (for Walk forward direction)
+    Eigen::Vector3d computeBodyXAxis(const Eigen::VectorXd& x, const std::string& body_name) const;
+    // World-frame xy subtree CoM linear velocity of a named body (for Walk com_vel: waist_lower_subcomvel)
+    // Reads data_temp_->subtreelinvel which is populated by mj_kinematics.
+    Eigen::Vector2d computeSubtreeLinVel2d(const Eigen::VectorXd& x, const std::string& body_name) const;
     
     // Rerun visualization helpers
     Eigen::VectorXd getJointLowerLimits() const;
