@@ -21,7 +21,7 @@ double ControlCost(const Eigen::VectorXd& u_err, const Eigen::MatrixXd& R);
 double HeightCost(double residual, double weight, const NormParams& norm);
 ::casadi::SX HeightCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
-// velocity cost: weight * norm(v_com_xy)  [2D, zero target, DeepMind "Velocity"]
+// CoM velocity cost: weight * norm(v_com_xy)  [2D, zero target, DeepMind "Velocity"]
 double VelocityCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm);
 ::casadi::SX VelocityCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
@@ -32,5 +32,11 @@ double uprightCost(const Eigen::Vector3d& residual, double weight, const NormPar
 // Balance cost: 0.5 * weight * norm(residual)
 double balanceCost(const Eigen::Vector2d& residual, double weight, const NormParams& norm);
 ::casadi::SX balanceCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
+
+// Pelvis/Feet cost: weight * RectifyLoss(r)  [scalar, DeepMind "Pelvis/Feet"]
+// r = 0.5*(z_foot_left + z_foot_right) - z_pelvis - 0.2
+// One-sided: near-zero when standing normally (r << 0), activates as pelvis drops toward feet
+double PelvisFeetCost(double residual, double weight, const NormParams& norm);
+::casadi::SX PelvisFeetCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm);
 
 } // namespace ilqr

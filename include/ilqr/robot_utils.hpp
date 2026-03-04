@@ -67,6 +67,15 @@ public:
     void setUprightWeight(double w) { w_upright_ = w; }
     void setBalanceWeight(double w) { w_balance_ = w; }
     double getBalanceWeight() const { return w_balance_; }
+    void setPelvisFeetWeight(double w) { w_pelvis_feet_ = w; }
+    double getPelvisFeetWeight() const { return w_pelvis_feet_; }
+    // Body name setters/getters (Pelvis/Feet cost, config-driven, robot-agnostic)
+    void setLeftFootBodyName(const std::string& n)  { left_foot_body_name_ = n; }
+    void setRightFootBodyName(const std::string& n) { right_foot_body_name_ = n; }
+    void setPelvisBodyName(const std::string& n)    { pelvis_body_name_ = n; }
+    const std::string& getLeftFootBodyName()  const { return left_foot_body_name_; }
+    const std::string& getRightFootBodyName() const { return right_foot_body_name_; }
+    const std::string& getPelvisBodyName()    const { return pelvis_body_name_; }
     
     // Constraint cost functions
     double constraintCost(const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -129,6 +138,10 @@ private:
     double w_vel_;  // Velocity cost weight (world-frame base xy, separate from position)
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
+    double w_pelvis_feet_; // Pelvis/Feet cost weight
+    std::string left_foot_body_name_;   // MuJoCo body name for left foot
+    std::string right_foot_body_name_;  // MuJoCo body name for right foot
+    std::string pelvis_body_name_;      // MuJoCo body name for pelvis
     
     // Constraint weights
     double w_joint_limits_;
@@ -156,6 +169,8 @@ public:
     Eigen::Vector3d computeCoMVelocity(const Eigen::VectorXd& x) const;
     Eigen::Vector3d computeEEPos(const Eigen::VectorXd& x, int ee_idx) const;
     Eigen::Vector3d computeEEVel(const Eigen::VectorXd& x, int ee_idx) const;
+    // World-frame z-position of a named MuJoCo body (for Pelvis/Feet cost)
+    double computeBodyZPos(const Eigen::VectorXd& x, const std::string& body_name) const;
     
     // Rerun visualization helpers
     Eigen::VectorXd getJointLowerLimits() const;

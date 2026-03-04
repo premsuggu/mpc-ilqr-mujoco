@@ -19,6 +19,7 @@ struct CostWeights {
     // Task-specific weights (used by addXxxCostDerivatives in ilqr.cpp)
     double W_height, W_vel, W_foot, W_foot_vel;
     double W_upright, w_balance;
+    double W_pelvis_feet;        // DeepMind "Pelvis/Feet" = 1.0
 };
 
 // Struct to hold MPC parameters
@@ -66,6 +67,7 @@ struct Config {
     // End-effector body names (loaded from config.yaml)
     std::string left_foot_body_name;
     std::string right_foot_body_name;
+    std::string pelvis_body_name;    // Body for Pelvis/Feet cost z-position (e.g. "pelvis")
     
     MpcParams mpc;
     

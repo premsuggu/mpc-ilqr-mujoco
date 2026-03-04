@@ -54,6 +54,12 @@ iLQR::iLQR(RobotUtils& robot, int N, double dt, const std::string& urdf_path)
         lxu_[t] = Eigen::MatrixXd::Zero(nx, nu);
     }
     std::cout << "iLQR initialized with horizon N=" << N_ << ", dt=" << dt_ << std::endl;
+    // Set body names for Pelvis/Feet cost derivatives (must be called after robot body names are set)
+    derivatives_.setPelvisFeetBodyNames(
+        robot_.getPelvisBodyName(),
+        robot_.getRightFootBodyName(),
+        robot_.getLeftFootBodyName()
+    );
 }
 
 void iLQR::initializeWithReference(const Eigen::VectorXd& x0,
@@ -179,6 +185,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addBalanceCostDerivatives(t);
         }
         
+        // ADD PELVIS/FEET COST DERIVATIVES if weight > 0
+        if (robot_.getPelvisFeetWeight() > 0.0) {
+            addPelvisFeetCostDerivatives(t);
+        }
+        
         // ADD CONSTRAINT DERIVATIVES
         Eigen::VectorXd constraint_grad_x(robot_.nx());
         Eigen::VectorXd constraint_grad_u(robot_.nu());
@@ -216,6 +227,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
     // ADD TERMINAL BALANCE COST DERIVATIVES if weight > 0
     if (robot_.getBalanceWeight() > 0.0) {
         addBalanceCostDerivatives(N_);
+    }
+    
+    // ADD TERMINAL PELVIS/FEET COST DERIVATIVES if weight > 0
+    if (robot_.getPelvisFeetWeight() > 0.0) {
+        addPelvisFeetCostDerivatives(N_);
     }
     
     // Add terminal constraint gradients and hessians (joint limits only)
@@ -520,6 +536,14 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
                 }
             }
         }
+        // Pelvis/Feet cost: 0.5*(z_foot_r+z_foot_l) - z_pelvis - 0.2 (RectifyLoss, one-sided)
+        if (robot_.getPelvisFeetWeight() > 0.0) {
+            double z_pelvis = robot_.computeBodyZPos(x_traj[t], robot_.getPelvisBodyName());
+            double z_foot_r = robot_.computeBodyZPos(x_traj[t], robot_.getRightFootBodyName());
+            double z_foot_l = robot_.computeBodyZPos(x_traj[t], robot_.getLeftFootBodyName());
+            double residual = 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;
+            total_cost += ilqr::PelvisFeetCost(residual, robot_.getPelvisFeetWeight(), getNormParams(norm_params_, "pelvis_feet"));
+        }
     }
 
     // Terminal posture cost (joint angles [7:nq], Quadratic)
@@ -563,6 +587,15 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
                 total_cost += ilqr::balanceCost(residual, robot_.getBalanceWeight(), getNormParams(norm_params_, "balance"));
             }
         }
+    }
+
+    // Terminal Pelvis/Feet cost
+    if (robot_.getPelvisFeetWeight() > 0.0) {
+        double z_pelvis = robot_.computeBodyZPos(x_traj[N_], robot_.getPelvisBodyName());
+        double z_foot_r = robot_.computeBodyZPos(x_traj[N_], robot_.getRightFootBodyName());
+        double z_foot_l = robot_.computeBodyZPos(x_traj[N_], robot_.getLeftFootBodyName());
+        double residual = 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;
+        total_cost += ilqr::PelvisFeetCost(residual, robot_.getPelvisFeetWeight(), getNormParams(norm_params_, "pelvis_feet"));
     }
     
     // Constraint costs
@@ -824,4 +857,13 @@ void iLQR::addBalanceCostDerivatives(int t) {
     
     lx_[t] += grad_balance;
     lxx_[t] += hess_balance;
+}
+
+void iLQR::addPelvisFeetCostDerivatives(int t) {
+    const double w = robot_.getPelvisFeetWeight();
+    if (w <= 0.0) return;
+    Eigen::VectorXd grad = derivatives_.PelvisFeetGrad(xbar_[t], w);
+    Eigen::MatrixXd hess = derivatives_.PelvisFeetHess(xbar_[t], w);
+    lx_[t] += grad;
+    lxx_[t] += hess;
 }

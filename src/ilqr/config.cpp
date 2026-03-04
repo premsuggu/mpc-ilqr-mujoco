@@ -22,6 +22,12 @@ Config loadConfigFromFile(const std::string& filepath) {
         auto ee_feet_node = yaml_node["robot"]["ee_feet"];
         config.left_foot_body_name = ee_feet_node["left_feet_ee"].as<std::string>();
         config.right_foot_body_name = ee_feet_node["right_feet_ee"].as<std::string>();
+        // Pelvis body name for Pelvis/Feet cost
+        if (yaml_node["robot"]["pelvis_body_name"]) {
+            config.pelvis_body_name = yaml_node["robot"]["pelvis_body_name"].as<std::string>();
+        } else {
+            config.pelvis_body_name = "pelvis";         // Default for DM humanoid
+        }
         
         config.q_ref_path = yaml_node["reference_trajectory"]["q_ref"].as<std::string>();
         config.v_ref_path = yaml_node["reference_trajectory"]["v_ref"].as<std::string>();
@@ -57,8 +63,9 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.W_vel  = costs_node["W_vel"].as<double>();
         config.mpc.costs.W_foot     = costs_node["W_foot"].as<double>();
         config.mpc.costs.W_foot_vel = costs_node["W_foot_vel"].as<double>();
-        config.mpc.costs.W_upright  = costs_node["W_upright"].as<double>();
-        config.mpc.costs.w_balance  = costs_node["w_balance"].as<double>();
+        config.mpc.costs.W_upright     = costs_node["W_upright"].as<double>();
+        config.mpc.costs.w_balance     = costs_node["w_balance"].as<double>();
+        config.mpc.costs.W_pelvis_feet = costs_node["W_pelvis_feet"].as<double>(1.0);
         
         // Load constraints
         auto constraints_node = mpc_node["constraints"];

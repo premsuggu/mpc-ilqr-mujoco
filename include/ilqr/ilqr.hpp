@@ -136,6 +136,7 @@ private:
     void addVelocityCostDerivatives(int t);  // SEPARATE velocity tracking
     void addUprightCostDerivatives(int t);
     void addBalanceCostDerivatives(int t);
+    void addPelvisFeetCostDerivatives(int t);
 
     // Utilities
     double computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,

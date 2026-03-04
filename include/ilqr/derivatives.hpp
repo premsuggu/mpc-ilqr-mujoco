@@ -127,6 +127,19 @@ public:
      */
     void setNormParams(const std::map<std::string, ilqr::NormParams>& norm_params);
 
+    /**
+     * @brief Set body names for the Pelvis/Feet cost (robot-agnostic, read from config).
+     * @param pelvis  Pelvis body name (z-position reference), e.g. "pelvis"
+     * @param foot_r  Right foot body name, e.g. "foot_right"
+     * @param foot_l  Left foot body name,  e.g. "foot_left"
+     */
+    void setPelvisFeetBodyNames(const std::string& pelvis,
+                                const std::string& foot_r,
+                                const std::string& foot_l);
+
+    Eigen::VectorXd PelvisFeetGrad(const Eigen::VectorXd& x, double w);
+    Eigen::MatrixXd PelvisFeetHess(const Eigen::VectorXd& x, double w);
+
     // Make data accessible to validation functions
     pinocchio::Model model_;
     pinocchio::Data data_;
@@ -158,6 +171,14 @@ private:
     ::casadi::Function balance_hess_fn_;
     bool balance_functions_built_;
     
+    // Pelvis/Feet cost functions (body z-position alignment)
+    ::casadi::Function pelvis_feet_grad_fn_;
+    ::casadi::Function pelvis_feet_hess_fn_;
+    bool pelvis_feet_functions_built_;
+    std::string pf_pelvis_body_;  // e.g. "pelvis"
+    std::string pf_foot_r_body_;  // e.g. "foot_right"
+    std::string pf_foot_l_body_;  // e.g. "foot_left"
+    
     // State dimensions (cached for efficiency)
     int nx_;  // Full state size (nq + nv)
     
@@ -179,6 +200,9 @@ private:
     // Helper to build balance cost functions (capture point)
     void buildBalanceFunctions();
     
+    // Helper to build pelvis/feet cost functions
+    void buildPelvisFeetFunctions();
+    
     // Symbolic cost expression helpers 
     ::casadi::SX symHeight(const ::casadi::SX& target_z,
                            const ::casadi::SX& weight);
@@ -189,6 +213,8 @@ private:
     
     ::casadi::SX symBalance(const ::casadi::SX& p_support,
                             const ::casadi::SX& weight);
+    
+    ::casadi::SX symPelvisFeet(const ::casadi::SX& weight);
                             
     // Norm parameters for each cost term
     std::map<std::string, ilqr::NormParams> norm_params_;

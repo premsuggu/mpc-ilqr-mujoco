@@ -14,6 +14,8 @@ RobotUtils::RobotUtils()
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
       nx_(0), nu_(0), dt_(0.01), w_height_(0.0), w_vel_(0.0),
       w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0), w_balance_(0.0),
+      w_pelvis_feet_(0.0),
+      left_foot_body_name_("foot_left"), right_foot_body_name_("foot_right"), pelvis_body_name_("pelvis"),
       linearization_epsilon_(1e-4) { 
 }
 
@@ -1104,3 +1106,14 @@ std::vector<bool> RobotUtils::getContactStates(int time_step) const {
     return contacts;
 }
 
+// World-frame z-position of a named MuJoCo body (for Pelvis/Feet cost evaluation)
+double RobotUtils::computeBodyZPos(const Eigen::VectorXd& x, const std::string& body_name) const {
+    int body_id = mj_name2id(model_, mjOBJ_BODY, body_name.c_str());
+    if (body_id < 0) {
+        std::cerr << "WARNING: Body '" << body_name << "' not found in model" << std::endl;
+        return 0.0;
+    }
+    const_cast<RobotUtils*>(this)->unpackStateToData(x, data_temp_);
+    mj_kinematics(model_, data_temp_);
+    return data_temp_->xpos[3 * body_id + 2];
+}

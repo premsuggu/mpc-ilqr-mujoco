@@ -2,9 +2,11 @@ robot:
   name: dm_humanoid
   model_path: "robots/dm_humanoid/humanoid.xml"
   urdf_path: "robots/dm_humanoid/humanoid.xml"
+  
   ee_feet:
     right_feet_ee: "foot_right"
     left_feet_ee: "foot_left"
+  pelvis_body_name: "pelvis"    # Body whose z-position is used in Pelvis/Feet cost
 
 reference_trajectory:
   q_ref: "data/dm_humanoid/q_standing.csv"
@@ -45,6 +47,7 @@ mpc:
     W_foot_vel: 1.0          # DeepMind foot tracking
     W_upright: 5.0           # DeepMind "Upright" = 5.0
     w_balance: 5.0           # DeepMind "Balance" = 5.0
+    W_pelvis_feet: 1.0       # DeepMind "Pelvis/Feet" = 1.0 (RectifyLoss, one-sided)
 
   # Norm types for each cost term - EXACT DeepMind MJPC values
   # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7), rectify (8)
@@ -62,6 +65,12 @@ mpc:
       type: 1      # L22: ((x*x')^q + p^(2*q))^(1/2/q) - p
       p: 0.02
       q: 4.0
+    
+    # Pelvis/Feet alignment - RectifyLoss p=0.05 (DeepMind walk.cc:52-57)
+    pelvis_feet:
+      type: 8      # RectifyLoss: p*log(1 + exp(r/p))
+      p: 0.05
+      q: 1.0       # Not used for RectifyLoss
     
     # Upright (orientation) - L2 norm with p=0.01
     upright:

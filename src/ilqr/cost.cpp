@@ -59,4 +59,15 @@ double balanceCost(const Eigen::Vector2d& residual, double weight, const NormPar
     return weight * applyNorm(residual, norm);
 }
 
+// Pelvis/Feet cost: one-sided penalty for pelvis dropping toward foot height
+double PelvisFeetCost(double residual, double weight, const NormParams& norm) {
+    Eigen::VectorXd r(1);
+    r(0) = residual;
+    return weight * applyNorm(r, norm);
+}
+
+::casadi::SX PelvisFeetCost(const ::casadi::SX& residual, const ::casadi::SX& weight, const NormParams& norm) {
+    return weight * applyNorm(residual, norm);
+}
+
 } // namespace ilqr
