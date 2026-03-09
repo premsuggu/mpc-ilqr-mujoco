@@ -76,6 +76,10 @@ int main() {
     mpc.setGravity(g_magnitude);
     std::cout << "Gravity magnitude set to: " << g_magnitude << " m/s^2" << std::endl;
     
+    // Set balance time constant (omega_0) for capture point computation
+    mpc.setBalanceTimeConstant(config.mpc.costs.balance_time_constant);
+    std::cout << "Balance time constant set to: " << config.mpc.costs.balance_time_constant << " s" << std::endl;
+    
     // Configure norm parameters for all cost terms
     mpc.configureNorms(config.norm_params);
     

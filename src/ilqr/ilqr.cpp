@@ -152,6 +152,13 @@ void iLQR::computeLinearization() {
     }
 }
 
+// Get norm params with default fallback
+inline ilqr::NormParams getNormParams(const std::map<std::string, ilqr::NormParams>& norm_params, 
+                                     const std::string& key) {
+    auto it = norm_params.find(key);
+    return (it != norm_params.end()) ? it->second : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
+}
+
 void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
                                  const std::vector<Eigen::VectorXd>& u_ref) {
     // Store references for backward pass
@@ -165,11 +172,20 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         
         // Tracking cost gradients
         lx_[t] = robot_.Q() * x_err;
-        lu_[t] = robot_.R() * u_err;
+        
+        // Control cost: use norm-based formulation (DeepMind Cosh norm)
+        double w_control = robot_.R()(0, 0);  // Extract weight from R matrix
+        ilqr::NormParams control_norm = getNormParams(norm_params_, "control");
+        Eigen::VectorXd lu_control(robot_.nu());
+        ilqr::applyNormGradient(u_err, control_norm, lu_control);
+        lu_[t] = w_control * lu_control;
         
         // Tracking cost hessians
         lxx_[t] = robot_.Q();
-        luu_[t] = robot_.R();
+        // Control cost Hessian: use norm-based formulation
+        Eigen::MatrixXd luu_control(robot_.nu(), robot_.nu());
+        ilqr::applyNormHessian(u_err, control_norm, luu_control);
+        luu_[t] = w_control * luu_control;
         lxu_[t] = Eigen::MatrixXd::Zero(robot_.nx(), robot_.nu());
         
         // ADD HEIGHT TRACKING DERIVATIVES if weight > 0
@@ -496,13 +512,6 @@ inline Eigen::Vector2d computeSupportCenter(const RobotUtils& robot, int t) {
     }
 }
 
-// Get norm params with default fallback
-inline ilqr::NormParams getNormParams(const std::map<std::string, ilqr::NormParams>& norm_params, 
-                                     const std::string& key) {
-    auto it = norm_params.find(key);
-    return (it != norm_params.end()) ? it->second : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
-}
-
 double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
                              const std::vector<Eigen::VectorXd>& u_traj,
                              const std::vector<Eigen::VectorXd>& x_ref,
@@ -515,9 +524,11 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         Eigen::VectorXd x_err = x_traj[t] - x_ref[t];
         total_cost += ilqr::PostureCost(x_err, robot_.Q());
         
-        // Control cost
+        // Control cost: use norm-based formulation (DeepMind Cosh norm)
         Eigen::VectorXd u_err = u_traj[t] - u_ref[t];
-        total_cost += ilqr::ControlCost(u_err, robot_.R());
+        double w_control = robot_.R()(0, 0);  // Extract weight
+        ilqr::NormParams control_norm = getNormParams(norm_params_, "control");
+        total_cost += w_control * ilqr::applyNorm(u_err, control_norm);
         
         // Height (torso z) cost
         if (robot_.getHeightWeight() > 0.0) {

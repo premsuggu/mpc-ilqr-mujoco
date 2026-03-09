@@ -36,6 +36,12 @@ public:
     void setGravity(double g) { ilqr_.setGravity(g); }
     
     /**
+     * @brief Set balance time constant (omega_0) for capture point computation
+     * @param omega Balance time constant (s). DeepMind: 0.2s for stand, 0.3s for walk
+     */
+    void setBalanceTimeConstant(double omega) { ilqr_.setBalanceTimeConstant(omega); }
+    
+    /**
      * @brief Configure norm parameters for all cost terms
      * @param norm_params Map of cost term names to their norm configurations
      */

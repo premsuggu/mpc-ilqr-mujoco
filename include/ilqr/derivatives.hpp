@@ -136,6 +136,17 @@ public:
     double getGravity() const { return gravity_; }
     
     /**
+     * @brief Set balance time constant (omega_0) for capture point computation
+     * @param omega Balance time constant (s). DeepMind: 0.2s for stand, 0.3s for walk
+     */
+    void setBalanceTimeConstant(double omega) { omega_0_ = omega; }
+
+    /**
+     * @brief Get current balance time constant
+     */
+    double getBalanceTimeConstant() const { return omega_0_; }
+    
+    /**
      * @brief Set norm parameters for all cost terms
      * @param norm_params Map of cost term names to their norm configurations
      */
@@ -232,6 +243,10 @@ private:
     
     // Gravity magnitude for balance cost (set from config)
     double gravity_;
+    
+    // Balance time constant (omega_0) for capture point prediction (set from config)
+    // DeepMind: 0.2s for stand, 0.3s for walk
+    double omega_0_;
     
     // Build all symbolic functions once in constructor
     void buildSymbolicFunctions();

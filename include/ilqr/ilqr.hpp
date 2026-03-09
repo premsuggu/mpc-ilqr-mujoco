@@ -31,7 +31,7 @@ public:
      * @param g Gravity magnitude (m/s^2)
      */
     void setGravity(double g) { derivatives_.setGravity(g); }
-    
+    void setBalanceTimeConstant(double omega) { derivatives_.setBalanceTimeConstant(omega); }
     /**
      * @brief Set norm parameters for all cost terms
      * @param norm_params Map of cost term names to their norm configurations

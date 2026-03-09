@@ -22,6 +22,7 @@ struct CostWeights {
     double W_pelvis_feet;        // DeepMind "Pelvis/Feet" = 1.0
     double W_walk;               // DeepMind "Walk" = 1.0
     double speed_goal;           // Target forward speed (m/s); 0.0 = standing task
+    double balance_time_constant;  // omega_0: capture point time constant (0.2s stand, 0.3s walk)
 };
 
 // Struct to hold MPC parameters

@@ -15,6 +15,7 @@ enum class NormType {
     L22 = 1,            // ((r·r)^(q/2) + p^(2q))^(1/(2q)) - p
     L2 = 2,             // sqrt(r^T * r + p^2) - p
     Cosh = 3,           // p^2 * (cosh(r/p) - 1)
+    SmoothAbsLoss = 6,  // sqrt(r^2 + p^2) - p (element-wise)
     SmoothAbs2Loss = 7, // (|r|^q + p^q)^(1/q) - p
     Rectify = 8         // p * log(1 + exp(r/p)) - one-sided penalty
 };
@@ -35,12 +36,17 @@ struct NormParams {
 // Numerical (Eigen) norm - value only
 double applyNorm(const Eigen::VectorXd& residual, const NormParams& params);
 
+// Norm gradient and Hessian (for control cost derivatives)
+void applyNormGradient(const Eigen::VectorXd& residual, const NormParams& params, Eigen::VectorXd& gradient);
+void applyNormHessian(const Eigen::VectorXd& residual, const NormParams& params, Eigen::MatrixXd& hessian);
+
 // Symbolic (CasADi) norm functions
 ::casadi::SX applyNorm(const ::casadi::SX& residual, const NormParams& params);
 ::casadi::SX normQuadratic(const ::casadi::SX& r);
 ::casadi::SX normL2(const ::casadi::SX& r, double p);
 ::casadi::SX normL22(const ::casadi::SX& r, double p, double q);
 ::casadi::SX normCosh(const ::casadi::SX& r, double p);
+::casadi::SX normSmoothAbsLoss(const ::casadi::SX& r, double p);
 ::casadi::SX normSmoothAbs2Loss(const ::casadi::SX& r, double p, double q);
 ::casadi::SX normRectify(const ::casadi::SX& r, double p);
 

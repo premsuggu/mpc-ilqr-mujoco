@@ -63,6 +63,7 @@ void symDerivatives::buildSymbolicFunctions() {
     
     // Initialize gravity with default value (will be overridden from config)
     gravity_ = 9.81;
+    omega_0_ = 0.3;  // Default for walk; override from config for stand (0.2)
     
     // Initialize CoM functions flag
     height_functions_built_ = false;
@@ -490,8 +491,8 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     casadi::SX pcom_x = ad_data_.com[0][0];
     casadi::SX pcom_y = ad_data_.com[0][1];
     
-    // Fixed CP time constant: 0.3 s (DeepMind walk.cc)
-    casadi::SX omega_0 = 0.3;
+    // Use configurable time constant (member variable: 0.2s for stand, 0.3s for walk)
+    casadi::SX omega_0 = omega_0_;
     
     std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
     std::vector<casadi::SX> v_com_xy = {vcom_x, vcom_y};

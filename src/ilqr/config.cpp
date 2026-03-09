@@ -74,6 +74,7 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.W_joint_vel = costs_node["W_joint_vel"].as<double>();
         config.mpc.costs.W_upright     = costs_node["W_upright"].as<double>();
         config.mpc.costs.w_balance     = costs_node["w_balance"].as<double>();
+        config.mpc.costs.balance_time_constant = costs_node["balance_time_constant"].as<double>(0.3);  // Default 0.3s (walk)
         config.mpc.costs.W_pelvis_feet = costs_node["W_pelvis_feet"].as<double>(1.0);
         config.mpc.costs.W_walk        = costs_node["W_walk"].as<double>(1.0);
         config.mpc.costs.speed_goal    = costs_node["speed_goal"].as<double>(0.0);

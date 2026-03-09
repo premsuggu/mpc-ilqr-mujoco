@@ -26,10 +26,10 @@ mpc:
   cost_weights:
     # -------------------------------------------------------------------------
     # Posture cost — penalises joint angles qpos[7:nq] from reference
-    # DeepMind: "Posture", dim=21, Quadratic norm (type=0), weight=0.025
+    # DeepMind stand: NO posture term (disabled)
     # -------------------------------------------------------------------------
     posture:
-      weight:          0.025   # Running cost weight (Quadratic, no norm params needed)
+      weight:          0.0     # DISABLED for stand task (DeepMind has no posture)
       terminal_weight: 0.1     # Terminal cost weight (independent of running)
 
     # -------------------------------------------------------------------------
@@ -42,31 +42,38 @@ mpc:
     # -------------------------------------------------------------------------
     # Task-specific weights — used by addXxxCostDerivatives in ilqr.cpp
     # -------------------------------------------------------------------------
-    W_height: 5.0            # DeepMind "Height" = 5.0 (Torso z tracking)
+    W_height: 100.0          # DeepMind stand "Height" = 100.0 (SmoothAbsLoss p=0.1)
     W_vel: 10.0              # DeepMind stand "CoM Vel." = 10.0 (Base xy velocity damping)
     W_joint_vel: 0.01        # DeepMind stand "Joint Vel." = 0.01 (Joint velocity damping)
     W_upright: 5.0           # DeepMind "Upright" = 5.0
-    w_balance: 5.0           # DeepMind "Balance" = 5.0
+    w_balance: 50.0          # DeepMind stand "Balance" = 50.0 (SmoothAbsLoss p=0.1)
+    balance_time_constant: 0.2  # Capture point time constant (0.2s for stand, 0.3s for walk)
     W_pelvis_feet: 1.0       # DeepMind "Pelvis/Feet" = 1.0 (RectifyLoss, one-sided)
     W_walk: 0.0              # DeepMind "Walk" = 1.0 — disabled for standing task
     speed_goal: 0.5          # DeepMind default walking speed (m/s). task.xml: residual_Speed data="0.5"
 
-  # Norm types for each cost term - EXACT DeepMind MJPC values
-  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_2_loss (7), rectify (8)
+  # Norm types for each cost term - EXACT DeepMind MJPC stand values
+  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_loss (6), smooth_abs_2_loss (7), rectify (8)
   # Parameters: p (regularization), q (power parameter)
-  # Reference: others/mujoco_mpc/mjpc/tasks/humanoid/walk/task.xml
+  # Reference: others/mujoco_mpc/mjpc/tasks/humanoid/stand/task.xml
   norm_types:
-    # Posture (joint angles [7:nq]) - Quadratic norm (no p/q needed)
+    # Posture (joint angles [7:nq]) - DISABLED for stand (weight=0)
     posture:
-      type: 0      # Quadratic: 0.5 * x^T * x
+      type: 0      # Quadratic: x^T * x
       p: 0.0
       q: 1.0
 
-    # Balance (capture point) - L22 norm with p=0.02, q=4.0
+    # Height (torso z) - SmoothAbsLoss with p=0.1 (DeepMind stand type 6)
+    height:
+      type: 6      # SmoothAbsLoss: sqrt(r^2 + p^2) - p
+      p: 0.1
+      q: 1.0
+
+    # Balance (capture point) - SmoothAbsLoss with p=0.1 (DeepMind stand type 6)
     balance:
-      type: 1      # L22: ((x*x')^q + p^(2*q))^(1/2/q) - p
-      p: 0.02
-      q: 4.0
+      type: 6      # SmoothAbsLoss: sqrt(r^2 + p^2) - p
+      p: 0.1
+      q: 1.0
     
     # Pelvis/Feet alignment - RectifyLoss p=0.05 (DeepMind walk.cc:52-57)
     pelvis_feet:
@@ -94,15 +101,9 @@ mpc:
     
     # Control (actuator torques) - Cosh norm with p=0.3 (DeepMind stand task)
     control:
-      type: 3      # Cosh: log(cosh(x/p)) * p^2
+      type: 3      # Cosh: p^2 * (cosh(x/p) - 1)
       p: 0.3
       q: 1.0
-    
-    # CoM Position (Height) - SmoothAbs2Loss with p=0.1, q=4.0
-    height:
-      type: 7      # SmoothAbs2Loss
-      p: 0.1
-      q: 4.0
     
     # Walk (forward velocity toward speed_goal) - SmoothAbs2Loss p=0.5, q=3.0
     walk:
