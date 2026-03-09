@@ -155,6 +155,7 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     robot.setPelvisFeetWeight(config.mpc.costs.W_pelvis_feet);
     robot.setWalkWeight(config.mpc.costs.W_walk);
     robot.setSpeedGoal(config.mpc.costs.speed_goal);
+    robot.setJointVelWeight(config.mpc.costs.W_joint_vel);
     // Body names for costs (must be set before MPC construction so iLQR picks them up)
     robot.setLeftFootBodyName(config.left_foot_body_name);
     robot.setRightFootBodyName(config.right_foot_body_name);
