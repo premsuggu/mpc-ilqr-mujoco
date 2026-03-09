@@ -50,12 +50,11 @@ mpc:
     balance_time_constant: 0.2  # Capture point time constant (0.2s for stand, 0.3s for walk)
     W_pelvis_feet: 1.0       # DeepMind "Pelvis/Feet" = 1.0 (RectifyLoss, one-sided)
     W_walk: 0.0              # DeepMind "Walk" = 1.0 — disabled for standing task
-    speed_goal: 0.5          # DeepMind default walking speed (m/s). task.xml: residual_Speed data="0.5"
+    speed_goal: 0.0          # DeepMind default walking speed (m/s). task.xml: residual_Speed data="0.5"
 
   # Norm types for each cost term - EXACT DeepMind MJPC stand values
   # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_loss (6), smooth_abs_2_loss (7), rectify (8)
   # Parameters: p (regularization), q (power parameter)
-  # Reference: others/mujoco_mpc/mjpc/tasks/humanoid/stand/task.xml
   norm_types:
     # Posture (joint angles [7:nq]) - DISABLED for stand (weight=0)
     posture:
@@ -112,8 +111,10 @@ mpc:
       q: 3.0
 
   constraints:
-    joint_limit_weight: 1500.0    # Keep same (safety)
-    torque_limit_weight: 1500.0   # Keep same (safety)
+    # HARD CONSTRAINTS NOW USED: Control clamping applied in unpackControlToData()
+    # All soft constraint penalty code removed (Phase 2 complete)
+    joint_limit_weight: 0.0       # Unused - soft constraints removed
+    torque_limit_weight: 0.0      # Unused - soft constraints removed
 
   # iLQR solver settings - ONLY parameters actually implemented in our code
   # See docs/ilqr_parameter_comparison.md for full details

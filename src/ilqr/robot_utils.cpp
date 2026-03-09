@@ -217,9 +217,7 @@ double RobotUtils::stageCost(int t, const Eigen::VectorXd& x, const Eigen::Vecto
             height_cost = 0.5 * w_height_ * com_err.squaredNorm();
         }
         
-        double constraint_cost_val = constraintCost(x, u);
-        
-        return tracking_cost + height_cost + constraint_cost_val;
+        return tracking_cost + height_cost;  // No soft constraints!
     }
     
     Eigen::VectorXd x_err = x - x_ref_full_[t];
@@ -235,9 +233,7 @@ double RobotUtils::stageCost(int t, const Eigen::VectorXd& x, const Eigen::Vecto
         height_cost = 0.5 * w_height_ * com_err.squaredNorm();
     }
     
-    double constraint_cost_val = constraintCost(x, u);
-    
-    return tracking_cost + height_cost + constraint_cost_val;
+    return tracking_cost + height_cost;  // No soft constraints!
 }
 
 double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
@@ -257,35 +253,7 @@ double RobotUtils::terminalCost(const Eigen::VectorXd& x) const {
         height_cost = 0.5 * w_height_ * com_err.squaredNorm();
     }
     
-    // Terminal constraint cost (only joint limits, no control at terminal state)
-    double constraint_cost_val = 0.0;
-    if (model_) {
-        for (int i = 1; i < model_->njnt; ++i) {  // Skip joint 0 (free joint)
-            int qpos_idx = model_->jnt_qposadr[i];
-            if (qpos_idx >= model_->nq) continue;
-            
-            double q_val = x(qpos_idx);
-            double q_min = model_->jnt_range[i * 2];
-            double q_max = model_->jnt_range[i * 2 + 1];
-            
-            if (std::isfinite(q_min) && std::isfinite(q_max) && q_min < q_max) {
-                double margin = 0.1 * (q_max - q_min);
-                double q_min_safe = q_min + margin;
-                double q_max_safe = q_max - margin;
-                
-                if (q_val > q_max_safe) {
-                    double violation = q_val - q_max_safe;
-                    constraint_cost_val += w_joint_limits_ * violation * violation;
-                }
-                if (q_val < q_min_safe) {
-                    double violation = q_min_safe - q_val;
-                    constraint_cost_val += w_joint_limits_ * violation * violation;
-                }
-            }
-        }
-    }
-    
-    return tracking_cost + height_cost + constraint_cost_val;
+    return tracking_cost + height_cost;  // No soft constraints!
 }
 
 void RobotUtils::setCostWeights(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& R, 
@@ -834,8 +802,13 @@ void RobotUtils::unpackStateToData(const Eigen::VectorXd& x, mjData* target_data
 }
 
 void RobotUtils::unpackControlToData(const Eigen::VectorXd& u, mjData* target_data) {
-    // Unpack control directly to specified data using Eigen::Map
-    Eigen::Map<Eigen::VectorXd>(target_data->ctrl, model_->nu) = u;
+    // Clamp controls to actuator limits (DeepMind hard constraints)
+    for (int i = 0; i < model_->nu; ++i) {
+        double u_clamped = std::clamp(u(i), 
+                                      model_->actuator_ctrlrange[i * 2],      // min
+                                      model_->actuator_ctrlrange[i * 2 + 1]); // max
+        target_data->ctrl[i] = u_clamped;
+    }
 }
 
 void RobotUtils::packStateFromData(Eigen::VectorXd& x, mjData* source_data) const {

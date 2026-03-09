@@ -222,24 +222,6 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         if (robot_.getWalkWeight() > 0.0) {
             addWalkCostDerivatives(t);
         }
-        
-        // ADD CONSTRAINT DERIVATIVES
-        Eigen::VectorXd constraint_grad_x(robot_.nx());
-        Eigen::VectorXd constraint_grad_u(robot_.nu());
-        robot_.constraintGradients(xbar_[t], ubar_[t], constraint_grad_x, constraint_grad_u);
-        
-        // Add constraint gradients to cost gradients
-        lx_[t] += constraint_grad_x;
-        lu_[t] += constraint_grad_u;
-        
-        // Add constraint hessians to cost hessians
-        Eigen::MatrixXd constraint_hess_xx(robot_.nx(), robot_.nx());
-        Eigen::MatrixXd constraint_hess_uu(robot_.nu(), robot_.nu());
-        robot_.constraintHessians(xbar_[t], ubar_[t], constraint_hess_xx, constraint_hess_uu);
-        
-        lxx_[t] += constraint_hess_xx;
-        luu_[t] += constraint_hess_uu;
-        // lxu remains zero for separable constraints
     }
     
     // Terminal cost (only joint limits, no control constraints)
@@ -272,18 +254,7 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         addWalkCostDerivatives(N_);
     }
     
-    // Add terminal constraint gradients and hessians (joint limits only)
-    Eigen::VectorXd terminal_constraint_grad_x(robot_.nx());
-    Eigen::VectorXd dummy_u = Eigen::VectorXd::Zero(robot_.nu());  // No control at terminal
-    Eigen::VectorXd dummy_grad_u(robot_.nu());
-    robot_.constraintGradients(xbar_[N_], dummy_u, terminal_constraint_grad_x, dummy_grad_u);
-    
-    Eigen::MatrixXd terminal_constraint_hess_xx(robot_.nx(), robot_.nx());
-    Eigen::MatrixXd dummy_hess_uu(robot_.nu(), robot_.nu());
-    robot_.constraintHessians(xbar_[N_], dummy_u, terminal_constraint_hess_xx, dummy_hess_uu);
-    
-    lx_[N_] += terminal_constraint_grad_x;
-    lxx_[N_] += terminal_constraint_hess_xx;
+    // Hard constraints now used (control clamping) - no soft constraint derivatives
 }
 
 void iLQR::setRegularization(double lambda) {
@@ -668,11 +639,7 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         }
     }
     
-    // Constraint costs
-    for(int t = 0; t < N_; ++t){
-        total_cost += robot_.constraintCost(x_traj[t], u_traj[t]);
-    }
-    total_cost += robot_.constraintCost(x_traj[N_], Eigen::VectorXd::Zero(robot_.nu()));
+    // Hard constraints now used (control clamping) - no soft constraint costs
 
     return total_cost;
 }
