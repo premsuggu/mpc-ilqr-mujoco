@@ -12,7 +12,7 @@
 
 RobotUtils::RobotUtils() 
     : model_(nullptr), data_(nullptr), data_temp_(nullptr),
-      nx_(0), nu_(0), dt_(0.01), w_height_(0.0), w_vel_(0.0),
+      nx_(0), nu_(0), dt_(0.01), w_height_(0.0), w_vel_(0.0), w_joint_vel_(0.0),
       w_joint_limits_(500.0), w_control_limits_(1000.0), w_upright_(0.0), w_balance_(0.0),
       w_pelvis_feet_(0.0), w_walk_(0.0), speed_goal_(0.0),
       left_foot_body_name_("foot_left"), right_foot_body_name_("foot_right"),

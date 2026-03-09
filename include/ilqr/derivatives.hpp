@@ -76,7 +76,21 @@ public:
      */
     Eigen::MatrixXd VelocityHess(const Eigen::VectorXd& x,
                                double weight = 1.0);
+    /**
+     * @brief Compute joint velocity cost gradient (21D, zero target, DeepMind \"Joint Vel.\")
+     * @param x Full state vector [q, v]
+     * @param weight Cost weight
+     * @return Gradient vector w.r.t. full state [q, v]
+     */
+    Eigen::VectorXd JointVelGrad(const Eigen::VectorXd& x, double weight);
 
+    /**
+     * @brief Compute joint velocity cost hessian (21D, zero target, DeepMind \"Joint Vel.\")
+     * @param x Full state vector [q, v]
+     * @param weight Cost weight
+     * @return Hessian matrix w.r.t. full state [q, v]
+     */
+    Eigen::MatrixXd JointVelHess(const Eigen::VectorXd& x, double weight);
     Eigen::VectorXd UprightGrad(const Eigen::VectorXd& x, 
                                 double w_upright);
 
@@ -180,6 +194,11 @@ private:
     ::casadi::Function vel_hess_fn_;     // Velocity Hessian function
     bool vel_functions_built_;
 
+    // Joint velocity cost functions (21 joint velocities, zero target)
+    ::casadi::Function joint_vel_grad_fn_;
+    ::casadi::Function joint_vel_hess_fn_;
+    bool joint_vel_functions_built_;
+
     // Upright cost funtion
     ::casadi::Function upright_grad_fn_;
     ::casadi::Function upright_hess_fn_;
@@ -223,6 +242,9 @@ private:
     // Helper to build CoM velocity functions (once, separate from position)
     void buildVelocityFunctions();
 
+    // Helper to build joint velocity cost functions
+    void buildJointVelFunctions();
+
     // Helper to build upright cost functions
     void buildUprightFunctions();
     
@@ -241,6 +263,8 @@ private:
     
     ::casadi::SX symVelocity(const ::casadi::SX& weight);
     
+    ::casadi::SX symJointVel(const ::casadi::SX& weight);
+    
     ::casadi::SX symUpright(const ::casadi::SX& weight);
     
     ::casadi::SX symBalance(const ::casadi::SX& p_support,
@@ -248,7 +272,9 @@ private:
     
     ::casadi::SX symPelvisFeet(const ::casadi::SX& weight);
 
-    // symWalk helpers
+    // Residual extraction helpers (for Gauss-Newton Hessians)
+    ::casadi::SX symBalanceResidual(const ::casadi::SX& p_support);
+    ::casadi::SX symPelvisFeetResidual();
     ::casadi::SX symWalkResidual(const ::casadi::SX& s_sym,
                                   const ::casadi::SX& speed_goal_sym);
     ::casadi::SX symWalk(const ::casadi::SX& weight,

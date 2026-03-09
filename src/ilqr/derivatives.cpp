@@ -67,6 +67,7 @@ void symDerivatives::buildSymbolicFunctions() {
     // Initialize CoM functions flag
     height_functions_built_ = false;
     vel_functions_built_ = false;
+    joint_vel_functions_built_ = false;
     upright_functions_built_ = false;
     balance_functions_built_ = false;
     pelvis_feet_functions_built_ = false;
@@ -134,6 +135,30 @@ void symDerivatives::buildVelocityFunctions() {
     
     vel_functions_built_ = true;
     std::cout << "Built cached velocity (2D xy base) functions" << std::endl;
+}
+
+void symDerivatives::buildJointVelFunctions() {
+    // No target parameter — residual is raw joint velocities (zero target, DeepMind "Joint Vel.")
+    ::casadi::SX weight_sym = ::casadi::SX::sym("weight");
+    
+    // Use symbolic cost helper
+    ::casadi::SX cost = symJointVel(weight_sym);
+    
+    // Build gradient and Hessian functions
+    ::casadi::SX grad = ::casadi::SX::gradient(cost, x_sym_);
+    joint_vel_grad_fn_ = ::casadi::Function(
+        "joint_vel_grad",
+        {x_sym_, weight_sym}, {grad}
+    );
+    
+    ::casadi::SX hess = ::casadi::SX::jacobian(grad, x_sym_);
+    joint_vel_hess_fn_ = ::casadi::Function(
+        "joint_vel_hess", 
+        {x_sym_, weight_sym}, {hess}
+    );
+    
+    joint_vel_functions_built_ = true;
+    std::cout << "Built cached joint velocity (21D) functions" << std::endl;
 }
 
 // For keeping the robot upright
@@ -279,6 +304,52 @@ Eigen::MatrixXd symDerivatives::VelocityHess(const Eigen::VectorXd& x,
     return hessian;
 }
 
+Eigen::VectorXd symDerivatives::JointVelGrad(const Eigen::VectorXd& x, double weight) {
+    if (!joint_vel_functions_built_) {
+        buildJointVelFunctions();
+        joint_vel_functions_built_ = true;
+    }
+    
+    // No Pinocchio quaternion conversion needed — only uses velocity states directly
+    std::vector<double> x_vec(x.data(), x.data() + x.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    ::casadi::DM grad_dm = joint_vel_grad_fn_(::casadi::DMVector{x_dm, weight_dm})[0];
+    
+    int nx = model_.nq + model_.nv;
+    Eigen::VectorXd gradient(nx);
+    for (int i = 0; i < nx; i++) {
+        gradient(i) = double(grad_dm(i));
+    }
+    
+    return gradient;
+}
+
+Eigen::MatrixXd symDerivatives::JointVelHess(const Eigen::VectorXd& x, double weight) {
+    if (!joint_vel_functions_built_) {
+        buildJointVelFunctions();
+        joint_vel_functions_built_ = true;
+    }
+    
+    // No Pinocchio quaternion conversion needed — only uses velocity states directly
+    std::vector<double> x_vec(x.data(), x.data() + x.size());
+    ::casadi::DM x_dm = ::casadi::DM(x_vec);
+    ::casadi::DM weight_dm = ::casadi::DM(weight);
+    
+    ::casadi::DM hess_dm = joint_vel_hess_fn_(::casadi::DMVector{x_dm, weight_dm})[0];
+    
+    int nx = model_.nq + model_.nv;
+    Eigen::MatrixXd hessian(nx, nx);
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < nx; j++) {
+            hessian(i, j) = double(hess_dm(i, j));
+        }
+    }
+    
+    return hessian;
+}
+
 // Upright posture derivatives
 Eigen::VectorXd symDerivatives::UprightGrad(const Eigen::VectorXd& x, double w_upright) {
     // Build functions if not yet built
@@ -354,6 +425,27 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     return ilqr::VelocityCost(residual, weight, norm);
 }
 
+::casadi::SX symDerivatives::symJointVel(const ::casadi::SX& weight) {
+    // Joint velocities are at x[nq+6:nq+nv] (skip base velocity x[nq:nq+6])
+    // For DM humanoid: nq=28, nv=27, so joint velocities are x[34:55] (21 values)
+    // DeepMind "Joint Vel." cost penalizes all joint velocities (zero target)
+    std::vector<::casadi::SX> v_joints;
+    int joint_vel_start = model_.nq + 6;  // Skip base velocity (6 DOF)
+    int joint_vel_dim = model_.nv - 6;    // Number of joint velocities (27-6=21)
+    
+    for (int i = 0; i < joint_vel_dim; ++i) {
+        v_joints.push_back(x_sym_(joint_vel_start + i));
+    }
+    
+    ::casadi::SX residual = ::casadi::SX::vertcat(v_joints);
+    
+    // Get norm params from configuration (DeepMind uses Quadratic, weight=0.01)
+    ilqr::NormParams norm = norm_params_.count("joint_vel") > 0 
+        ? norm_params_.at("joint_vel")
+        : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
+    return ilqr::JointVelCost(residual, weight, norm);
+}
+
 ::casadi::SX symDerivatives::symUpright(const ::casadi::SX& weight) {
     // Extract quaternion from x_sym_: [pos(3), quat(4), joints...]
     // Quaternion indices: [3, 4, 5, 6] for [qx, qy, qz, qw] in Pinocchio format
@@ -379,30 +471,26 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     return ilqr::uprightCost(residual, weight, norm);
 }
 
-::casadi::SX symDerivatives::symBalance(const ::casadi::SX& p_support,
-                                        const ::casadi::SX& weight) {
-    // Extract q and v from x_sym_
+::casadi::SX symDerivatives::symBalanceResidual(const ::casadi::SX& p_support) {
+    // Extract q from x_sym_
     typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
     ConfigVector q_ad(model_.nq);
-    
     for (int i = 0; i < model_.nq; i++) {
         q_ad[i] = x_sym_(i);
     }
     
-    // World-frame base linear velocity is at x[nq+0], x[nq+1] in both MuJoCo and Pinocchio
-    // states (convertMuJoCoToPinocchio only swaps quaternion order, not velocity frame).
-    // No rotation matrix or Jacobian needed — numerically stable.
+    // World-frame base linear velocity is at x[nq+0], x[nq+1]
     casadi::SX vcom_x = x_sym_(model_.nq + 0);
     casadi::SX vcom_y = x_sym_(model_.nq + 1);
     
-    // CoM position via FK (stable, no Jacobian needed)
+    // CoM position via FK
     pinocchio::forwardKinematics(ad_model_, ad_data_, q_ad);
     pinocchio::centerOfMass(ad_model_, ad_data_, q_ad, false);
     
     casadi::SX pcom_x = ad_data_.com[0][0];
     casadi::SX pcom_y = ad_data_.com[0][1];
     
-    // Fixed CP time constant: 0.3 s (DeepMind walk.cc, not sqrt(h/g))
+    // Fixed CP time constant: 0.3 s (DeepMind walk.cc)
     casadi::SX omega_0 = 0.3;
     
     std::vector<casadi::SX> p_com_xy = {pcom_x, pcom_y};
@@ -411,7 +499,12 @@ Eigen::MatrixXd symDerivatives::UprightHess(const Eigen::VectorXd& x, double w_u
     casadi::SX v_com_2d = casadi::SX::vertcat(v_com_xy);
     
     casadi::SX p_cp = p_com_2d + v_com_2d * omega_0;
-    casadi::SX residual = p_cp - p_support;
+    return p_cp - p_support;  // 2D residual
+}
+
+::casadi::SX symDerivatives::symBalance(const ::casadi::SX& p_support,
+                                        const ::casadi::SX& weight) {
+    casadi::SX residual = symBalanceResidual(p_support);
     
     // Get norm params from configuration
     ilqr::NormParams norm = norm_params_.count("balance") > 0 
@@ -436,21 +529,29 @@ void symDerivatives::buildBalanceFunctions() {
     casadi::SX p_support = casadi::SX::sym("p_support", 2);
     casadi::SX w_balance = casadi::SX::sym("w_balance");
     
-    // Use symbolic cost helper
+    // Exact gradient (safe — first-order terms through CoM FK are fine)
     casadi::SX cost = symBalance(p_support, w_balance);
-    
-    // Compute gradient and Hessian
     casadi::SX grad = casadi::SX::gradient(cost, x_sym_);
-    casadi::SX hess = casadi::SX::jacobian(grad, x_sym_);
     
-    // Create CasADi functions
-    balance_grad_fn_ = casadi::Function("balance_grad",
-                                        {x_sym_, p_support, w_balance},
-                                        {grad});
+    // Gauss-Newton Hessian: H_GN = L''(r) * J_r^T * J_r  (always PSD)
+    // Exact Hessian has negative eigenvalues from d²(CoM)/dq² — avoid.
+    casadi::SX residual = symBalanceResidual(p_support);  // 2D
+    casadi::SX J_r = casadi::SX::jacobian(residual, x_sym_);  // 2×nx
     
-    balance_hess_fn_ = casadi::Function("balance_hess",
-                                        {x_sym_, p_support, w_balance},
-                                        {hess});
+    // Second derivative of the norm loss w.r.t. residual
+    casadi::SX r_dummy = casadi::SX::sym("r_2d", 2);
+    ilqr::NormParams norm_gn = norm_params_.count("balance") > 0
+        ? norm_params_.at("balance")
+        : ilqr::NormParams{ilqr::NormType::Quadratic, 1.0, 1.0};
+    casadi::SX cost_2d = ilqr::balanceCost(r_dummy, w_balance, norm_gn);
+    casadi::SX grad_r = casadi::SX::gradient(cost_2d, r_dummy);
+    casadi::SX L_dd_expr = casadi::SX::jacobian(grad_r, r_dummy);
+    casadi::SX L_dd = casadi::SX::substitute(L_dd_expr, r_dummy, residual);
+    
+    casadi::SX hess_gn = casadi::SX::mtimes(casadi::SX::mtimes(J_r.T(), L_dd), J_r);
+    
+    balance_grad_fn_ = casadi::Function("balance_grad", {x_sym_, p_support, w_balance}, {grad});
+    balance_hess_fn_ = casadi::Function("balance_hess", {x_sym_, p_support, w_balance}, {hess_gn});
 }
 
 Eigen::VectorXd symDerivatives::BalanceGrad(const Eigen::VectorXd& x,
@@ -525,16 +626,36 @@ void symDerivatives::setPelvisFeetBodyNames(const std::string& pelvis,
 
 void symDerivatives::buildPelvisFeetFunctions() {
     casadi::SX w = casadi::SX::sym("w_pelvis_feet");
+    
+    // Exact gradient (safe — first-order terms through frame FK are fine)
     casadi::SX cost = symPelvisFeet(w);
     casadi::SX grad = casadi::SX::gradient(cost, x_sym_);
-    casadi::SX hess = casadi::SX::jacobian(grad, x_sym_);
+    
+    // Gauss-Newton Hessian: H_GN = L''(r) * J_r^T * J_r  (always PSD)
+    // Exact Hessian has negative eigenvalues from d²(frame_z)/dq² — avoid.
+    casadi::SX residual = symPelvisFeetResidual();  // scalar
+    casadi::SX J_r = casadi::SX::jacobian(residual, x_sym_);  // 1×nx
+    
+    // Second derivative of the norm loss w.r.t. residual (scalar symbolic)
+    casadi::SX r_dummy = casadi::SX::sym("r_1d");
+    ilqr::NormParams norm_gn = norm_params_.count("pelvis_feet") > 0
+        ? norm_params_.at("pelvis_feet")
+        : ilqr::NormParams{ilqr::NormType::Rectify, 0.05, 1.0};
+    casadi::SX cost_1d = ilqr::PelvisFeetCost(r_dummy, w, norm_gn);
+    casadi::SX L_dd_expr = casadi::SX::jacobian(
+        casadi::SX::jacobian(cost_1d, r_dummy), r_dummy);
+    casadi::SX L_dd = casadi::SX::substitute(L_dd_expr, r_dummy, residual);
+    
+    casadi::SX hess_gn = L_dd * casadi::SX::mtimes(J_r.T(), J_r);
+    
     pelvis_feet_grad_fn_ = casadi::Function("pelvis_feet_grad", {x_sym_, w}, {grad});
-    pelvis_feet_hess_fn_ = casadi::Function("pelvis_feet_hess", {x_sym_, w}, {hess});
+    pelvis_feet_hess_fn_ = casadi::Function("pelvis_feet_hess", {x_sym_, w}, {hess_gn});
+    
     std::cout << "Built pelvis/feet functions (pelvis=" << pf_pelvis_body_
               << ", foot_r=" << pf_foot_r_body_ << ", foot_l=" << pf_foot_l_body_ << ")" << std::endl;
 }
 
-::casadi::SX symDerivatives::symPelvisFeet(const ::casadi::SX& weight) {
+::casadi::SX symDerivatives::symPelvisFeetResidual() {
     // Compute z-positions of pelvis and feet via Pinocchio FK
     typedef Eigen::Matrix<ADScalar, Eigen::Dynamic, 1> ConfigVector;
     ConfigVector q_ad(model_.nq);
@@ -553,9 +674,12 @@ void symDerivatives::buildPelvisFeetFunctions() {
     casadi::SX z_foot_l = frameZPos(pf_foot_l_body_);
 
     // DeepMind walk.cc:52-57: r = 0.5*(foot_left[z] + foot_right[z]) - pelvis[z] - 0.2
-    // RectifyLoss: ~0 when standing normally (r << 0), activates when pelvis collapses toward feet
-    casadi::SX residual = 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;
+    return 0.5*(z_foot_r + z_foot_l) - z_pelvis - 0.2;  // scalar residual
+}
 
+::casadi::SX symDerivatives::symPelvisFeet(const ::casadi::SX& weight) {
+    casadi::SX residual = symPelvisFeetResidual();
+    
     ilqr::NormParams norm = norm_params_.count("pelvis_feet") > 0
         ? norm_params_.at("pelvis_feet")
         : ilqr::NormParams{ilqr::NormType::Rectify, 0.05, 1.0};

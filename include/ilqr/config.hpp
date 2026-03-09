@@ -17,7 +17,7 @@ struct CostWeights {
     double R_control;
 
     // Task-specific weights (used by addXxxCostDerivatives in ilqr.cpp)
-    double W_height, W_vel;
+    double W_height, W_vel, W_joint_vel;
     double W_upright, w_balance;
     double W_pelvis_feet;        // DeepMind "Pelvis/Feet" = 1.0
     double W_walk;               // DeepMind "Walk" = 1.0

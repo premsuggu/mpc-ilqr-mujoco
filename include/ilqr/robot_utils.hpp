@@ -63,6 +63,8 @@ public:
     double getHeightWeight() const { return w_height_; }
     void setVelocityWeight(double w) { w_vel_ = w; }
     double getVelocityWeight() const { return w_vel_; }
+    void setJointVelWeight(double w) { w_joint_vel_ = w; }
+    double getJointVelWeight() const { return w_joint_vel_; }
     double getUprightWeight() const { return w_upright_; }
     void setUprightWeight(double w) { w_upright_ = w; }
     void setBalanceWeight(double w) { w_balance_ = w; }
@@ -143,7 +145,8 @@ private:
     // Cost matrices
     Eigen::MatrixXd Q_, R_, Qf_;
     double w_height_;  // Height (torso z) tracking weight
-    double w_vel_;  // Velocity cost weight (world-frame base xy, separate from position)
+    double w_vel_;  // CoM velocity cost weight (world-frame base xy, DeepMind "ComVel.")
+    double w_joint_vel_;  // Joint velocity cost weight (21 joints, DeepMind "Joint Vel.")
     double w_upright_; // Upright Posture Penalty
     double w_balance_; // Balance cost weight (capture point)
     double w_pelvis_feet_; // Pelvis/Feet cost weight

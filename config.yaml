@@ -17,8 +17,8 @@ reference_trajectory:
 
 mpc:
   horizon: 23              # MJPC: 0.35s / 0.015s = 23 steps
-  dt: 0.02                # MJPC timestep (15ms)
-  physics_dt: 0.02        # MuJoCo substep (keep fine for stability)
+  dt: 0.015                # MJPC timestep (15ms)
+  physics_dt: 0.015        # MuJoCo substep (keep fine for stability)
   gravity: [0.0, 0.0, -1.0]  # Standard gravity (MJPC uses full gravity)
   sim_steps: 50            # Total simulation steps
   contact_impratio: 100.0  # Contact stiffness
@@ -34,17 +34,17 @@ mpc:
 
     # -------------------------------------------------------------------------
     # Control regularization — uniform penalty on actuator torques
-    # DeepMind: "Control", Cosh norm (type=3, p=0.3), weight=0.1
-    # (Cosh norm applied in addControlCost; R matrix uses this scalar)
+    # DeepMind stand task: "Control", Cosh norm (type=3, p=0.3), weight=0.025
     # -------------------------------------------------------------------------
     control:
-      R_control: 0.1
+      R_control: 0.025
 
     # -------------------------------------------------------------------------
     # Task-specific weights — used by addXxxCostDerivatives in ilqr.cpp
     # -------------------------------------------------------------------------
     W_height: 5.0            # DeepMind "Height" = 5.0 (Torso z tracking)
-    W_vel: 0.625             # DeepMind "Velocity" = 0.625 (CoM velocity tracking)
+    W_vel: 10.0              # DeepMind stand "CoM Vel." = 10.0 (Base xy velocity damping)
+    W_joint_vel: 0.01        # DeepMind stand "Joint Vel." = 0.01 (Joint velocity damping)
     W_upright: 5.0           # DeepMind "Upright" = 5.0
     w_balance: 5.0           # DeepMind "Balance" = 5.0
     W_pelvis_feet: 1.0       # DeepMind "Pelvis/Feet" = 1.0 (RectifyLoss, one-sided)
@@ -80,11 +80,23 @@ mpc:
       p: 0.01
       q: 1.0       # Not used for L2
     
-    # CoM Velocity - SmoothAbs2Loss with p=0.2, q=4.0
+    # CoM velocity (base xy) - Quadratic norm (DeepMind stand "CoM Vel.")
     velocity:
-      type: 7      # SmoothAbs2Loss: (abs(x)^q + p^q)^(1/q) - p
-      p: 0.2
-      q: 4.0
+      type: 0      # Quadratic: 0.5 * x^T * x
+      p: 0.0
+      q: 1.0
+    
+    # Joint velocity (21 joints) - Quadratic norm (DeepMind stand "Joint Vel.")
+    joint_vel:
+      type: 0      # Quadratic: 0.5 * x^T * x
+      p: 0.0
+      q: 1.0
+    
+    # Control (actuator torques) - Cosh norm with p=0.3 (DeepMind stand task)
+    control:
+      type: 3      # Cosh: log(cosh(x/p)) * p^2
+      p: 0.3
+      q: 1.0
     
     # CoM Position (Height) - SmoothAbs2Loss with p=0.1, q=4.0
     height:

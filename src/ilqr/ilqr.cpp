@@ -182,6 +182,11 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addVelocityCostDerivatives(t);
         }
         
+        // ADD JOINT VELOCITY COST DERIVATIVES if weight > 0 (DeepMind "Joint Vel.")
+        if (robot_.getJointVelWeight() > 0.0) {
+            addJointVelCostDerivatives(t);
+        }
+        
         // ADD UPRIGHT COST DERIVATIVES if weight > 0
         if (robot_.getUprightWeight() > 0.0) {
             addUprightCostDerivatives(t);
@@ -863,6 +868,21 @@ void iLQR::addVelocityCostDerivatives(int t) {
         
     } catch (const std::exception& e) {
         std::cerr << "Warning: Velocity cost error at t=" << t << ": " << e.what() << std::endl;
+    }
+}
+
+void iLQR::addJointVelCostDerivatives(int t) {
+    const double w = robot_.getJointVelWeight();
+    if (w <= 0.0) return;
+    
+    try {
+        Eigen::VectorXd grad = derivatives_.JointVelGrad(xbar_[t], w);
+        Eigen::MatrixXd hess = derivatives_.JointVelHess(xbar_[t], w);
+        
+        lx_[t] += grad;
+        lxx_[t] += hess;
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Joint vel cost error at t=" << t << ": " << e.what() << std::endl;
     }
 }
 
