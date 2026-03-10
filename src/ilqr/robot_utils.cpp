@@ -18,7 +18,8 @@ RobotUtils::RobotUtils()
       left_foot_body_name_("foot_left"), right_foot_body_name_("foot_right"),
       pelvis_body_name_("pelvis"), torso_body_name_("torso"),
       waist_lower_body_name_("waist_lower"),
-      linearization_epsilon_(1e-4) { 
+      linearization_epsilon_(1e-4),
+      fd_tolerance_(1e-6), fd_mode_(0) { 
 }
 
 RobotUtils::~RobotUtils() {
@@ -155,43 +156,38 @@ void RobotUtils::linearizeDynamicsFD(const Eigen::VectorXd& x, const Eigen::Vect
                                      double eps) {
     if (!model_ || !data_ || !data_temp_) return;
     
-    // Experiment 2: Use member epsilon if not explicitly provided
+    // Use configured FD tolerance (DeepMind MJPC: 1e-6)
     if (eps <= 0.0) {
-        eps = linearization_epsilon_;
+        eps = fd_tolerance_;
     }
     
     A.resize(nx_, nx_);
     B.resize(nx_, nu_);
     
     // Save original state
-    setState(x);
     mj_copyData(data_temp_, model_, data_);
     
-    // Get baseline next state: x_next = f(x, u)
-    Eigen::VectorXd x_next_baseline(nx_);
-    rolloutOneStep(x, u, x_next_baseline);
+    // Set state and control in mjData
+    unpackStateToData(x, data_);
+    unpackControlToData(u, data_);
     
-    // Compute A matrix: ∂f/∂x using forward differences
-    for (int i = 0; i < nx_; ++i) {
-        Eigen::VectorXd x_pert = x;
-        x_pert(i) += eps;
-        
-        Eigen::VectorXd x_next_pert(nx_);
-        rolloutOneStep(x_pert, u, x_next_pert);
-        
-        A.col(i) = (x_next_pert - x_next_baseline) / eps;
-    }
+    // Compute forward dynamics at current state
+    mj_forward(model_, data_);
     
-    // Compute B matrix: ∂f/∂u using forward differences
-    for (int j = 0; j < nu_; ++j) {
-        Eigen::VectorXd u_pert = u;
-        u_pert(j) += eps;
-        
-        Eigen::VectorXd x_next_pert(nx_);
-        rolloutOneStep(x, u_pert, x_next_pert);
-        
-        B.col(j) = (x_next_pert - x_next_baseline) / eps;
-    }
+    // Use MuJoCo's built-in finite difference function (DeepMind MJPC approach)
+    // This properly handles quaternions and is more efficient than manual loops
+    std::vector<double> A_flat(nx_ * nx_);
+    std::vector<double> B_flat(nx_ * nu_);
+    
+    // Call mjd_transitionFD with configured FD mode
+    // fd_mode_: 1 = centered differences, 0 = forward differences
+    mjd_transitionFD(model_, data_, eps, static_cast<mjtByte>(fd_mode_),
+                     A_flat.data(), B_flat.data(), 
+                     nullptr, nullptr);  // C, D not needed (sensor derivatives)
+    
+    // Map MuJoCo's column-major arrays to Eigen matrices (also column-major by default)
+    A = Eigen::Map<Eigen::MatrixXd>(A_flat.data(), nx_, nx_);
+    B = Eigen::Map<Eigen::MatrixXd>(B_flat.data(), nx_, nu_);
     
     // Restore original state
     mj_copyData(data_, model_, data_temp_);

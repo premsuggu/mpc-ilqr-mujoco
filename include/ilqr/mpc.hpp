@@ -42,6 +42,15 @@ public:
     void setBalanceTimeConstant(double omega) { ilqr_.setBalanceTimeConstant(omega); }
     
     /**
+     * @brief Configure finite difference parameters (DeepMind MJPC compatible)
+     * @param fd_tol Finite difference epsilon (default: 1e-6)
+     * @param fd_mode 0=forward differences, 1=centered differences (default: 0)
+     */
+    void setFiniteDiffParams(double fd_tol, int fd_mode) {
+        ilqr_.setFiniteDiffParams(fd_tol, fd_mode);
+    }
+    
+    /**
      * @brief Configure norm parameters for all cost terms
      * @param norm_params Map of cost term names to their norm configurations
      */

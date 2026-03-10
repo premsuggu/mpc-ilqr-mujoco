@@ -101,6 +101,8 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.line_search_tolerance = solver_node["line_search_tolerance"].as<double>();
             config.mpc.ilqr_settings.quu_regularization = solver_node["quu_regularization"].as<double>();
             config.mpc.ilqr_settings.convergence_threshold = solver_node["convergence_threshold"].as<double>();
+            config.mpc.ilqr_settings.fd_tolerance = solver_node["fd_tolerance"].as<double>();
+            config.mpc.ilqr_settings.fd_mode = solver_node["fd_mode"].as<int>();
         } else {
             // Default values if not specified
             config.mpc.ilqr_settings.initial_regularization = 1e-6;
@@ -117,6 +119,8 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.line_search_tolerance = 1e-6;
             config.mpc.ilqr_settings.quu_regularization = 1e-4;
             config.mpc.ilqr_settings.convergence_threshold = 1e-8;
+            config.mpc.ilqr_settings.fd_tolerance = 1e-6;
+            config.mpc.ilqr_settings.fd_mode = 0;
         }
         
         // Load norm types for cost terms

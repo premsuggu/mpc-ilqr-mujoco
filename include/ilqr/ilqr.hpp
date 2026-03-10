@@ -26,6 +26,11 @@ public:
     void setMaxIterations(int max_iter) { max_iterations_ = max_iter; }
     void setTolerance(double tol) { tolerance_ = tol; }
     
+    // Finite difference configuration (DeepMind MJPC compatible)
+    void setFiniteDiffParams(double fd_tol, int fd_mode) {
+        robot_.setFiniteDiffParams(fd_tol, fd_mode);
+    }
+    
     /**
      * @brief Set gravity magnitude for balance cost computation
      * @param g Gravity magnitude (m/s^2)

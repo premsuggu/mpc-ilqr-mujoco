@@ -52,6 +52,10 @@ struct MpcParams {
         double line_search_tolerance;
         double quu_regularization;
         double convergence_threshold;
+        
+        // Finite difference parameters (DeepMind MJPC compatible)
+        double fd_tolerance;              // FD epsilon (DeepMind: 1e-6)
+        int fd_mode;                      // 0=forward, 1=centered (DeepMind: configurable)
     } ilqr_settings;
 };
 

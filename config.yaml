@@ -144,6 +144,10 @@ mpc:
     
     # Convergence criterion
     convergence_threshold: 1.0e-8          # Cost improvement threshold
+    
+    # Finite difference parameters (DeepMind MJPC compatible)
+    fd_tolerance: 1.0e-6                   # FD epsilon (DeepMind default: 1e-6)
+    fd_mode: 1                              # 0=forward, 1=centered (DeepMind: configurable)
 
 paths:
   logs_dir: "logs"

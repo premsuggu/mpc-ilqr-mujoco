@@ -53,6 +53,12 @@ public:
     void linearizeDynamicsFD(const Eigen::VectorXd& x, const Eigen::VectorXd& u,
                              Eigen::MatrixXd& A, Eigen::MatrixXd& B,
                              double eps = 1e-5);
+    
+    // Finite difference configuration (DeepMind MJPC compatible)
+    void setFiniteDiffParams(double fd_tol, int fd_mode) {
+        fd_tolerance_ = fd_tol;
+        fd_mode_ = fd_mode;
+    }
 
     // Cost functions
     double stageCost(int t, const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -163,7 +169,11 @@ private:
     double w_control_limits_;
     
     // Experiment 2: Linearization parameters
-    double linearization_epsilon_;  // Finite difference step size
+    double linearization_epsilon_;  // Finite difference step size (deprecated)
+    
+    // DeepMind MJPC compatible FD parameters
+    double fd_tolerance_;          // Finite difference epsilon (default: 1e-6)
+    int fd_mode_;                   // 0=forward, 1=centered (default: 0)
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;

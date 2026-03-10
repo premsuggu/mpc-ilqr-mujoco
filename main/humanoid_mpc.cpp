@@ -97,6 +97,12 @@ int main() {
         config.mpc.ilqr_settings.quu_regularization,
         config.mpc.ilqr_settings.convergence_threshold
     );
+    
+    // Configure finite difference parameters (DeepMind MJPC compatible)
+    mpc.setFiniteDiffParams(config.mpc.ilqr_settings.fd_tolerance, 
+                            config.mpc.ilqr_settings.fd_mode);
+    std::cout << "FD parameters set: tolerance=" << config.mpc.ilqr_settings.fd_tolerance 
+              << ", mode=" << (config.mpc.ilqr_settings.fd_mode == 0 ? "forward" : "centered") << std::endl;
 
     // Initialize Rerun visualization if enabled
     RerunLogger* rerun_logger = nullptr;
