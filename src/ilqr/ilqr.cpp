@@ -184,23 +184,6 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
             addBalanceCostDerivatives(t);
         }
         
-        // ADD CONSTRAINT DERIVATIVES
-        Eigen::VectorXd constraint_grad_x(robot_.nx());
-        Eigen::VectorXd constraint_grad_u(robot_.nu());
-        robot_.constraintGradients(xbar_[t], ubar_[t], constraint_grad_x, constraint_grad_u);
-        
-        // Add constraint gradients to cost gradients
-        lx_[t] += constraint_grad_x;
-        lu_[t] += constraint_grad_u;
-        
-        // Add constraint hessians to cost hessians
-        Eigen::MatrixXd constraint_hess_xx(robot_.nx(), robot_.nx());
-        Eigen::MatrixXd constraint_hess_uu(robot_.nu(), robot_.nu());
-        robot_.constraintHessians(xbar_[t], ubar_[t], constraint_hess_xx, constraint_hess_uu);
-        
-        lxx_[t] += constraint_hess_xx;
-        luu_[t] += constraint_hess_uu;
-        // lxu remains zero for separable constraints
     }
     
     // Terminal cost (only joint limits, no control constraints)
@@ -233,90 +216,124 @@ void iLQR::computeCostQuadratics(const std::vector<Eigen::VectorXd>& x_ref,
         addBalanceCostDerivatives(N_);
     }
     
-    // Add terminal constraint gradients and hessians (joint limits only)
-    Eigen::VectorXd terminal_constraint_grad_x(robot_.nx());
-    Eigen::VectorXd dummy_u = Eigen::VectorXd::Zero(robot_.nu());  // No control at terminal
-    Eigen::VectorXd dummy_grad_u(robot_.nu());
-    robot_.constraintGradients(xbar_[N_], dummy_u, terminal_constraint_grad_x, dummy_grad_u);
-    
-    Eigen::MatrixXd terminal_constraint_hess_xx(robot_.nx(), robot_.nx());
-    Eigen::MatrixXd dummy_hess_uu(robot_.nu(), robot_.nu());
-    robot_.constraintHessians(xbar_[N_], dummy_u, terminal_constraint_hess_xx, dummy_hess_uu);
-    
-    lx_[N_] += terminal_constraint_grad_x;
-    lxx_[N_] += terminal_constraint_hess_xx;
 }
 
 void iLQR::setRegularization(double lambda) {
     reg_lambda_ = lambda;
 }
 
-void iLQR::backwardPass() { 
+void iLQR::backwardPass() {
     // Reset expected reduction
     dV_.setZero();
-    
-    // V_N(x_N) = l_f(x_N), so ∇V_N = ∇l_f and ∇²V_N = ∇²l_f
-    VxN_ = lx_[N_];   // Terminal cost gradient
-    VxxN_ = lxx_[N_]; // Terminal cost Hessian
-    
-    // Backward recursion starts with terminal cost derivatives
-    Eigen::VectorXd Vx = VxN_;
+
+    // V_N(x_N) = l_f(x_N)
+    VxN_  = lx_[N_];
+    VxxN_ = lxx_[N_];
+
+    Eigen::VectorXd Vx  = VxN_;
     Eigen::MatrixXd Vxx = VxxN_;
-    
+
+    const int nx = robot_.nx();
+    const int nu = robot_.nu();
+    const double* ctrl_range = robot_.model()->actuator_ctrlrange;
+
+    // Scratch memory reused each timestep for mju_boxQP
+    std::vector<double> H_flat(nu * nu);
+    std::vector<double> g_flat(nu);
+    std::vector<double> lb_flat(nu), ub_flat(nu);
+    std::vector<double> res_flat(nu);
+    std::vector<double> R_flat(nu * (nu + 7), 0.0);
+    std::vector<int>    free_idx(nu);
+
     for (int t = N_ - 1; t >= 0; --t) {
-        // Q-function quadratics with safe Eigen evaluation
-        Eigen::VectorXd Atv = (A_[t].transpose() * Vx).eval();
-        Eigen::VectorXd Btv = (B_[t].transpose() * Vx).eval();
-        
-        Eigen::VectorXd Qx = lx_[t] + Atv;
-        Eigen::VectorXd Qu = lu_[t] + Btv;
+        // ----- Q-function quadratics -----
+        Eigen::VectorXd Qx  = lx_[t] + (A_[t].transpose() * Vx).eval();
+        Eigen::VectorXd Qu  = lu_[t] + (B_[t].transpose() * Vx).eval();
         Eigen::MatrixXd Qxx = lxx_[t] + A_[t].transpose() * Vxx * A_[t];
+        // unregularized Quu (used for dV and Vxx update)
         Eigen::MatrixXd Quu = luu_[t] + B_[t].transpose() * Vxx * B_[t];
-        
-        // Cross-term with safe construction
-        Eigen::MatrixXd Qxu(robot_.nx(), robot_.nu());
-        Qxu = lxu_[t];
+        Eigen::MatrixXd Qxu = lxu_[t];  // (nx × nu)
         Qxu.noalias() += A_[t].transpose() * Vxx * B_[t];
-        
-        // Regularization for numerical stability
-        Quu += reg_lambda_ * Eigen::MatrixXd::Identity(Quu.rows(), Quu.cols());
-        
-        // Check positive definiteness of Quu
-        Eigen::LLT<Eigen::MatrixXd> llt(Quu);
-        if (llt.info() != Eigen::Success) {
-            Quu += 1e-4 * Eigen::MatrixXd::Identity(Quu.rows(), Quu.cols());
+
+        // ----- Regularization -----
+        Eigen::MatrixXd Quu_reg = Quu;
+        Quu_reg += reg_lambda_ * Eigen::MatrixXd::Identity(nu, nu);
+
+        // ----- BoxQP: solve for kff (feedforward / action_improvement) -----
+        //   min  0.5 * d' * Quu_reg * d + Qu' * d
+        //   s.t. lb[i] <= d[i] <= ub[i]
+        //   where lb[i] = ctrl_min[i] - ubar[t][i],  ub[i] = ctrl_max[i] - ubar[t][i]
+        //
+        // Reference: backward_pass.cc:158-196
+        Eigen::Map<Eigen::MatrixXd>(H_flat.data(), nu, nu) = Quu_reg;
+        Eigen::Map<Eigen::VectorXd>(g_flat.data(), nu)     = Qu;
+        for (int i = 0; i < nu; ++i) {
+            lb_flat[i] = ctrl_range[2*i]     - ubar_[t](i);
+            ub_flat[i] = ctrl_range[2*i + 1] - ubar_[t](i);
         }
-        
-        // Compute gains
-        K_[t] = -Quu.ldlt().solve(Qxu.transpose());  // K = -Quu^{-1} Qux
-        kff_[t] = -Quu.ldlt().solve(Qu);             // k = -Quu^{-1} Qu
-        
-        // Check for non-finite gains and throw exception
+
+        int mFree = mju_boxQP(res_flat.data(), R_flat.data(), free_idx.data(),
+                              H_flat.data(), g_flat.data(), nu,
+                              lb_flat.data(), ub_flat.data());
+
+        if (mFree < 0) {
+            // BoxQP failed — Quu_reg is not SPD; signal failure so solve() can
+            // increase regularization and retry.
+            throw std::runtime_error("BoxQP failure at t=" + std::to_string(t)
+                                     + ", try increasing regularization");
+        }
+
+        // Feedforward correction: du = BoxQP solution
+        kff_[t] = Eigen::Map<Eigen::VectorXd>(res_flat.data(), nu);
+
+        // ----- Feedback gain K: only for free (unclamped) action dims -----
+        // Clamped actuators get zero gain (they cannot move further toward limits).
+        // Free actuators: K[free, :] = -Quu_free^{-1} * Qxu'[free, :]
+        //
+        // Reference: backward_pass.cc:176-192
+        K_[t].setZero(nu, nx);
+        if (mFree > 0) {
+            // Build free-variable sub-block of Quu_reg  (mFree × mFree)
+            Eigen::MatrixXd Quu_free(mFree, mFree);
+            // Build free-variable rows of Qxu' = Qxu^T[free, :]  (mFree × nx)
+            // Qxu is (nx × nu): column a = Qxu.col(a) is the state-gradient for action a
+            Eigen::MatrixXd Qxu_free_T(mFree, nx);
+            for (int i = 0; i < mFree; ++i) {
+                for (int j = 0; j < mFree; ++j)
+                    Quu_free(i, j) = Quu_reg(free_idx[i], free_idx[j]);
+                Qxu_free_T.row(i) = Qxu.col(free_idx[i]).transpose();
+            }
+            Eigen::LLT<Eigen::MatrixXd> llt_free(Quu_free);
+            if (llt_free.info() == Eigen::Success) {
+                Eigen::MatrixXd K_free = -llt_free.solve(Qxu_free_T);  // (mFree × nx)
+                for (int i = 0; i < mFree; ++i)
+                    K_[t].row(free_idx[i]) = K_free.row(i);
+            }
+            // If LLT fails on the free block (shouldn't happen after BoxQP), leave
+            // those rows zero — conservative fallback.
+        }
+
         if (!K_[t].allFinite() || !kff_[t].allFinite()) {
-            std::cerr << "ERROR: Non-finite gains at timestep " << t << std::endl;
-            std::cerr << "  This indicates numerical instability (ill-conditioned Quu)" << std::endl;
-            throw std::runtime_error("Backward pass failed: non-finite gains at t=" + std::to_string(t));
+            throw std::runtime_error("Non-finite gains at t=" + std::to_string(t));
         }
-        
-        // Compute expected cost reduction (for trust region ratio)
-        dV_(0) += kff_[t].dot(Qu);                     // Linear term
-        dV_(1) += 0.5 * kff_[t].dot(Quu * kff_[t]);    // Quadratic term
-        
-        // Value function update with safe evaluation (corrected formulas from iLQR.tex)
-        Eigen::VectorXd KTQu = (K_[t].transpose() * Qu).eval();
-        Eigen::VectorXd KTQuuk = (K_[t].transpose() * Quu * kff_[t]).eval();
-        // Q_ux^T * d_k - Note: In our notation Qxu is (nx x nu), so Q_ux = Qxu^T is (nu x nx)
-        // Therefore Q_ux^T = (Qxu^T)^T = Qxu, and Q_ux^T * d_k = Qxu * kff_[t]
-        Eigen::VectorXd Qux_T_dk = (Qxu * kff_[t]).eval(); 
-        
-        // Correct formula: s_k = Q_x + K_k^T Q_uu d_k + K_k^T Q_u + Q_ux^T d_k
-        Vx = Qx + KTQuuk + KTQu + Qux_T_dk;
-        
-        // Correct formula: S_k = Q_xx + K_k^T Q_uu K_k + K_k^T Q_ux + Q_ux^T K_k
-        Vxx = Qxx + K_[t].transpose() * Quu * K_[t] + K_[t].transpose() * Qxu.transpose() + Qxu * K_[t];
-        
-        // Ensure Vxx stays symmetric
-        Vxx = 0.5 * (Vxx + Vxx.transpose());
+
+        // ----- Expected cost reduction (using unregularized Quu) -----
+        // Reference: backward_pass.cc:223-226
+        dV_(0) += kff_[t].dot(Qu);
+        dV_(1) += 0.5 * kff_[t].dot(Quu * kff_[t]);
+
+        // ----- Value function update -----
+        // Vx  = Qx  + K' * (Quu * du + Qu) + Qxu * du
+        // Vxx = Qxx + K' * Quu * K + Qxu * K + K' * Qxu'
+        // Reference: backward_pass.cc:228-248
+        Eigen::VectorXd Quu_du = (Quu * kff_[t]).eval();
+        Vx = Qx + (K_[t].transpose() * (Quu_du + Qu)).eval() + (Qxu * kff_[t]).eval();
+
+        Vxx = Qxx
+              + K_[t].transpose() * Quu * K_[t]
+              + Qxu * K_[t]
+              + K_[t].transpose() * Qxu.transpose();
+        Vxx = 0.5 * (Vxx + Vxx.transpose());  // symmetrize
     }
 }
 
@@ -338,12 +355,18 @@ bool iLQR::forwardPassLineSearch(const Eigen::VectorXd& x0,
         
         x_new[0] = x0;
         
+        const double* ctrl_range = robot_.model()->actuator_ctrlrange;
+        const int nu = robot_.nu();
         bool rollout_success = true;
         for (int t = 0; t < N_; ++t) {
-            // Control law: u = ubar + alpha * k + K * (x - xbar)
+            // Control law: u = ubar + alpha * du + K * (x - xbar)
             Eigen::VectorXd dx = x_new[t] - xbar_[t];
             u_new[t] = ubar_[t] + alpha * kff_[t] + K_[t] * dx;
-            
+
+            // Hard clamp to actuator control range (matches mujoco_mpc policy.cc:159)
+            for (int i = 0; i < nu; ++i)
+                u_new[t](i) = std::clamp(u_new[t](i), ctrl_range[2*i], ctrl_range[2*i+1]);
+
             // Rollout one step
             try {
                 robot_.rolloutOneStep(x_new[t], u_new[t], x_new[t + 1]);
@@ -520,11 +543,6 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
             total_cost += 0.5 * robot_.getBalanceWeight() * residual_balance.squaredNorm();
         }
     }
-
-    for(int t = 0; t < N_; ++t){
-        total_cost += robot_.constraintCost(x_traj[t], u_traj[t]);
-    }
-    total_cost += robot_.constraintCost(x_traj[N_], Eigen::VectorXd::Zero(robot_.nu()));
 
     return total_cost;
 }
