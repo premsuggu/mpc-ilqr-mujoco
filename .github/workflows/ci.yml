@@ -23,12 +23,13 @@ jobs:
       uses: conda-incubator/setup-miniconda@v3
       with:
         miniconda-version: "latest"
-        auto-update-conda: true
+        auto-update-conda: false
         activate-environment: humanoid-mpc
         environment-file: environment.yml
         python-version: "3.11"
         auto-activate-base: false
         use-mamba: true
+        channel-priority: strict
         
     - name: Verify conda environment
       shell: bash -el {0}
@@ -36,6 +37,16 @@ jobs:
         conda info
         conda list
         echo "CONDA_PREFIX: $CONDA_PREFIX"
+
+    - name: Pin critical C++ dependencies (all platforms)
+      shell: bash -el {0}
+      run: |
+        conda install -n humanoid-mpc -c conda-forge -y \
+          "python=3.11.*" \
+          "eigen=3.4.*" \
+          "casadi=3.7.*" \
+          "pinocchio=3.8.*"
+        conda list -n humanoid-mpc | grep -E "^(python|eigen|casadi|pinocchio)\\s"
         
     - name: Install additional conda packages for CI
       shell: bash -el {0}
