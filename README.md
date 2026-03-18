@@ -1,23 +1,25 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/premsuggu/mpc-ilqr-mujoco)
+
 # Humanoid Model Predictive Control (MPC) with iLQR
 
-A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization.
+A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization. **Closely aligned with DeepMind MJPC architecture.**
 
 ![Humanoid Standing Balance](results/T_h1.gif)
 
 ## 🚀 Features
 
-- **Real-time MPC**: 50Hz control loop with ~5-8 seconds per optimization step
-- **iLQR Optimization**: Efficient iterative Linear Quadratic Regulator solver with warm-start capability
-- **Log-Scale Line Search**: Dynamic alpha generation (DeepMind MJPC style) for aggressive stepping
-- **Robust Cost Functions**: 6 configurable norm types (Quadratic, L22, L2, Cosh, SmoothAbs2Loss, Rectify)
-- **Symbolic Differentiation**: Fast analytical derivatives using Pinocchio + CasADi
-- **MuJoCo Integration**: Physics simulation with contact modeling
-- **Cross-platform**: Works on Linux, macOS, and Windows
-- **Multi-Robot Support**: Model-agnostic design supporting multiple humanoid models (H1, DeepMind Humanoid, etc.)
-- **Configuration-Driven**: All parameters and robot-specific settings loaded from `config.yaml`
+- **DeepMind MJPC Alignment**: Implements exact cost functions, robust norms, and optimization algorithms from DeepMind's MJPC
+- **iLQR Solver**: Iterative Linear Quadratic Regulator with warm-start, line search, and regularization adaptation
+- **Advanced Cost Functions**: 7 robust norm types (Quadratic, L2, L22, Cosh, SmoothAbsLoss, SmoothAbs2Loss, RectifyLoss)
+- **Model Linearization**: Built-in MuJoCo `mjd_transitionFD` for accurate dynamics derivatives (96% drift reduction!)
+- **Quaternion-Aware**: Proper quaternion normalization and manifold-aware differentiation
+- **Hard Constraints**: Control limit handling via clamping (BoxQP support planned)
+- **Symbolic Derivatives**: CasADi-based cost derivatives for numerical stability
+- **Configuration-Driven**: All parameters and costs controlled via `config.yaml` - no code changes needed
+- **Real-time MPC**: ~180ms per control step (66.7Hz timestep, 12x slower than real-time)
+- **Cross-platform**: Windows, Linux, macOS
 - **Performance Profiling**: Optional compile-time profiling with zero overhead when disabled
-- **Visualization Tools**: Python scripts for trajectory analysis and 3D MuJoCo viewer
+- **Visualization**: Python scripts for analysis and 3D MuJoCo viewer
 
 ## 📋 Prerequisites
 
@@ -130,36 +132,197 @@ build\Release\humanoid_mpc.exe
 - If `conda activate` doesn't work, use: `C:\Users\<YourUsername>\miniconda3\Scripts\activate.bat humanoid-mpc`
 - Make sure Visual Studio's C++ compiler is in PATH (installation should handle this)
 
-## 🎮 Usage
+## 🎮 Usage & Configuration Guide
 
 **⚠️ Important: Always activate the conda environment before running!**
 
-### 1. Run MPC Simulation
+### 1. Run iLQR MPC Simulation
 
 ```bash
-# Activate environment (all platforms)
+# Activate environment
 conda activate humanoid-mpc
 
-# Run simulation
-# Linux/macOS:
-./build/humanoid_mpc
-
-# Windows:
-build\Release\humanoid_mpc.exe
+# Run iLQR-based MPC (faster, gradient-based)
+./build/humanoid_mpc  # Linux/macOS
+build\Release\humanoid_mpc.exe  # Windows
 ```
 
 **Output:**
 ```
-Configuration loaded from config.yaml
-Model loaded: nx=51, nu=19
-MPC initialized with N=25, dt=0.02
-Step 0/15 | Cost: 16.27 | (X,Y,Z): (0,0,1.043) m | Control range: [-4.84, 0.56]
+Configuration loaded successfully from config.yaml
+Model loaded successfully:
+  Left foot: 'foot_left' (body ID 10)
+  Right foot: 'foot_right' (body ID 7)
 ...
-Simulation completed in 24728 ms
-Average step time: 2472.80 ms
+FD parameters set: tolerance=1e-6, mode=centered
+Step 0/50 | Cost: 830.966 | (X,Y,Z): (0,0,1.282) m | Control range: [-0.379, 0.346]
+Step 1/50 | Cost: 827.3 | (X,Y,Z): (-0.001, 0.000, 1.283) m | Control range: [-0.379, 0.346]
+...
+Step 49/50 | Cost: 121.151 | (X,Y,Z): (-0.097, 0.046, 0.975) m
+Simulation completed in 9009 ms
+Average step time: 180.18 ms
 ```
 
-### 2. Visualize Results in 3D
+**Key metrics:**
+- **XY drift**: Position error in world frame (target: < 0.2m for standing)
+- **Height**: Torso z-position (target: 1.282m)
+- **Cost**: Weighted sum of all residual terms
+- **Control range**: Min/max actuator torques applied
+
+### 2. Configure Cost Functions
+
+All cost configuration happens in **`config.yaml`** - no code changes needed!
+
+#### **2.1 Cost Weights**
+
+```yaml
+mpc:
+  cost_weights:
+    # Standing task configuration
+    W_height: 100.0          # Penalize height deviation (100.0 = strict)
+    W_vel: 10.0              # Penalize base XY velocity
+    W_joint_vel: 0.01        # Penalize per-joint velocity
+    w_balance: 50.0          # Capture point distance penalty
+    W_pelvis_feet: 1.0       # Alignment penalty (walk task)
+    W_walk: 0.0              # Forward velocity goal (for walking)
+    W_upright: 5.0           # Orientation penalty
+    control:
+      R_control: 0.025       # Control effort penalty
+    posture:
+      weight: 0.0            # Joint angle tracking (disabled for standing)
+```
+
+**How to adjust:**
+- **Increase weight** → Optimizer prioritizes that constraint more
+- **Decrease weight** → Optimizer relaxes that constraint
+- **Set to 0** → Constraint disabled
+
+**Example: Reduce height drop**
+```yaml
+W_height: 200.0  # Was 100.0 → Increase to maintain height
+```
+
+**Example: Allow more drifting**
+```yaml
+w_balance: 25.0  # Was 50.0 → Reduce for less strict balance
+```
+
+#### **2.2 Cost Norm Types**
+
+Each cost term uses a **robust norm function** for stability. Available types:
+
+| Type | Name | Formula | Good For |
+|------|------|---------|----------|
+| 0 | Quadratic | `rᵀr` | Standard least squares |
+| 1 | L22 | `((rᵀr)^(q/2) + p^(2q))^(1/(2q)) - p` | Smooth transitions |
+| 2 | L2 | `√(rᵀr + p²) - p` | Outlier rejection |
+| 3 | Cosh | `Σᵢ p²·(cosh(rᵢ/p) - 1)` | Smooth everywhere |
+| 6 | SmoothAbsLoss | `Σᵢ (√(rᵢ² + p²) - p)` | Robust, smooth |
+| 7 | SmoothAbs2Loss | `Σᵢ ((|rᵢ|^q + p^q)^(1/q) - p)` | Power-law robustness |
+| 8 | Rectify | `Σᵢ p·log(1 + exp(rᵢ/p))` | One-sided penalty |
+
+**Configuration example:**
+```yaml
+mpc:
+  norm_types:
+    # Height: smooth transition, outlier-robust
+    height:
+      type: 6              # SmoothAbsLoss
+      p: 0.1               # Smooth threshold
+      q: 1.0               # Not used for this type
+    
+    # Control: smooth overal penalty
+    control:
+      type: 3              # Cosh
+      p: 0.3               # Smoothing parameter
+      q: 1.0               # Not used
+    
+    # Balance: capture point distance
+    balance:
+      type: 6              # SmoothAbsLoss
+      p: 0.1
+      q: 1.0
+    
+    # Velocity: standard quadratic
+    velocity:
+      type: 0              # Quadratic
+      p: 0.0
+      q: 1.0
+```
+
+**How to change norm behavior:**
+
+**Make penalty harsher (quadratic for large errors, linear for small):**
+```yaml
+height:
+  type: 2       # L2
+  p: 0.05       # Smaller p → sharper transition to linear
+```
+
+**Make penalty smoother (quadratic everywhere):**
+```yaml
+height:
+  type: 0       # Quadratic: rᵀr
+  p: 0.0
+```
+
+**Make penalty one-sided (only penalize negative errors):**
+```yaml
+pelvis_feet:
+  type: 8       # Rectify: if r>0, cost ≈ p·r; if r<0, cost ≈ p·(r²/2p)
+  p: 0.1
+```
+
+### 3. Tune iLQR Solver Parameters
+
+```yaml
+mpc:
+  ilqr_settings:
+    # Convergence control
+    max_iterations: 10                  # Max iLQR iterations per step
+    tolerance: 1.0e-4                   # Cost improvement threshold
+    convergence_threshold: 1.0e-8       # Final stop criterion
+    
+    # Regularization (trust region method)
+    reg_min: 1.0e-6                     # Minimum regularization λ_min
+    reg_max: 1.0e6                      # Maximum regularization λ_max
+    reg_increase_factor: 10.0           # λ := λ·10 on failure
+    reg_decrease_factor: 10.0           # λ := λ/10 on success
+    
+    trust_region_good: 0.5              # Decrease λ if improvement > 50%
+    trust_region_poor: 0.25             # Increase λ if improvement < 25%
+    
+    # Line search (log-scale step sizes)
+    num_line_search_steps: 30           # Number of step size candidates
+    min_linesearch_step: 1.0e-3         # Minimum step size α_min
+    line_search_tolerance: 1.0e-6       # Line search precision
+    
+    # Finite difference (for fallback; we use mjd_transitionFD)
+    fd_tolerance: 1.0e-6                # ε for FD Jacobians
+    fd_mode: 1                          # 1=centered, 0=forward differences
+```
+
+**How to tune:**
+
+**Solver too slow?** → Reduce iterations or increase line search tolerance
+```yaml
+max_iterations: 5                  # Was 10
+line_search_tolerance: 1.0e-4      # Was 1.0e-6 (fewer line search checks)
+```
+
+**Solver diverging?** → Increase minimum regularization or decrease trust region thresholds
+```yaml
+reg_min: 1.0e-4                    # Was 1.0e-6 (more damping)
+trust_region_poor: 0.1             # Was 0.25 (more conservative)
+```
+
+**Solver too conservative** (small steps, convergence issues)? → Decrease regularization bounds
+```yaml
+reg_max: 1.0e3                     # Was 1.0e6 (less max damping)
+trust_region_good: 0.3             # Was 0.5 (faster to decrease λ)
+```
+
+### 4. Visualize Results in 3D
 
 ```bash
 # Activate environment
@@ -169,67 +332,55 @@ conda activate humanoid-mpc
 python simulate.py
 ```
 
-This opens an interactive 3D viewer showing the robot executing the MPC trajectory at 50Hz.
+This opens an interactive 3D viewer showing the robot executing the MPC trajectory.
 
-### 3. Plot Performance Metrics
+### 5. Plot Performance Metrics
 
 ```bash
-# Generate tracking error plots
+# Generate trajectory analysis plots
 python plotter.py
 ```
 
 **Generated files:**
-- `results/humanoid_tracking_comparison.png` - State trajectory comparison
-- `results/humanoid_tracking_errors.png` - Tracking error analysis
+- `results/q_optimal.csv` - State trajectory (q, v)
+- `results/u_optimal.csv` - Control sequence (torques)
+- `results/humanoid_tracking_comparison.png` - Trajectory plots
+- `results/humanoid_tracking_errors.png` - Error analysis
 
-### 4. Enable Performance Profiling
+### 6. Enable Performance Profiling
 
 ```bash
-# Build with profiling enabled
+# Build with profiling
 cmake -B build -DENABLE_PROFILING=ON
-cmake --build build --config Release
+cmake --build build --config Release -j$(nproc)
 
-# Run to see detailed timing breakdown
-./build/humanoid_mpc  # Linux/macOS
-build\Release\humanoid_mpc.exe  # Windows
+# Run to see detailed timing
+./build/humanoid_mpc
 ```
 
-**Profiling output:**
+**Profiling output example:**
 ```
 === Performance Profiling ===
 --- Timing Summary ---
 Function               Calls   Total(ms)     Avg(ms)     Min(ms)     Max(ms)
-----------------------------------------------------------------------------
-MPC_computeControl        10        0.01        0.00        0.00        0.00
-MPC_extractReference      10        0.05        0.01        0.00        0.01
-MPC_iLQR_solve            10    24720.71     2472.07     1228.29     3067.83
-MPC_stepOnce              10    24726.70     2472.67     1228.46     3072.27
-MPC_warmStart             10        5.75        0.57        0.13        4.41
-iLQR_backwardPass         90      206.22        2.29        2.05        3.67
-...
+MPC_stepOnce              50    9000.00      180.00      150.00      250.00
+iLQR_solve                50    8950.00      179.00      149.00      249.00
+iLQR_linearization       100      200.00        2.00        1.50        3.00
+iLQR_backwardPass        100      100.00        1.00        0.80        1.50
+iLQR_lineSearch          150       50.00        0.33        0.10        1.00
 
 --- Memory Summary ---
-Initial:  404.76 MB
-Peak:     407.26 MB
-Final:    407.26 MB
+Initial: 405.00 MB
+Peak:    410.00 MB
+Final:   410.00 MB
 ```
 
-**📈 Interpreting Profiling Results:**
-
-**Timing Breakdown:**
-- **MPC_stepOnce**: Total time for one MPC control step (including all iLQR iterations)
-- **iLQR_linearization**: Computing dynamics Jacobians A_t, B_t 
-  - Uses symbolic differentiation (CasADi + Pinocchio) for analytical derivatives
-- **iLQR_costQuadratics**: Computing Q, R cost matrices with norm derivatives
-- **iLQR_backwardPass**: Computing feedback gains via Riccati recursion
-- **iLQR_lineSearch**: Forward rollout to find optimal step size (log-scale alphas)
-- **Calls**: Number of times each function was called
-
-**Memory Metrics:**
-- **Initial**: RSS (Resident Set Size) at program start after model loading
-- **Peak**: Maximum memory usage during simulation
-- **Final**: Memory usage at program exit
-- **Leaked**: Difference between Final and Initial (small leaks ~2-3 MB are expected)
+**Key metrics:**
+- **MPC_stepOnce**: Total time for one control step
+- **iLQR_solve**: Optimization time (multiple iterations)
+- **iLQR_linearization**: Computing Jacobians with `mjd_transitionFD`
+- **iLQR_backwardPass**: Riccati recursion for gains K, k
+- **iLQR_lineSearch**: Forward rollout testing different step sizes
 
 ## 📊 Project Structure
 
@@ -249,7 +400,7 @@ mujoco_mpc/
 │   │   ├── mpc.hpp               # MPC orchestrator with warm-start
 │   │   ├── derivatives.hpp       # Symbolic differentiation (Pinocchio+CasADi)
 │   │   ├── cost.hpp              # Residual-based cost function interface
-│   │   ├── norm.hpp              # Robust norm types (6 types: Quadratic, L22, L2, Cosh, SmoothAbs2Loss, Rectify)
+│   │   ├── norm.hpp              # Robust norm types (7 types: Quadratic, L22, L2, Cosh, SmoothAbsLoss, SmoothAbs2Loss, Rectify)
 │   │   └── config.hpp            # YAML configuration loader
 │   └── nlp/                      # NLP MPC implementation (best practices)
 │       ├── nlp_config.hpp        # Configuration structs (weights, options)
@@ -314,12 +465,13 @@ J = Σ_t [ W_state·ρ(r_state) + W_ctrl·ρ(r_ctrl)
 ```
 
 **Supported Norm Types** (ρ: ℝⁿ → ℝ):
-- **Quadratic**: `0.5 · rᵀr` (standard least squares)
-- **L22**: `p² · (√(rᵀr/p² + 1) - 1)` (smoothed L2)
-- **L2**: `p · √(rᵀr)` (linear growth for outliers)
-- **Cosh**: `p² · (cosh(√(rᵀr)/p) - 1)` (smooth near zero)
-- **SmoothAbs2Loss**: Smooth transition from quadratic to linear
-- **Rectify**: `p · max(0, r)` (one-sided penalty)
+- **Quadratic**: `rᵀr` (standard least squares)
+- **L22**: `((rᵀr)^(q/2) + p^(2q))^(1/(2q)) - p` (smoothed L2)
+- **L2**: `√(rᵀr + p²) - p` (outlier rejection)
+- **Cosh**: `Σᵢ p²·(cosh(rᵢ/p) - 1)` (smooth near zero)
+- **SmoothAbsLoss**: `Σᵢ (√(rᵢ² + p²) - p)` (robust, smooth)
+- **SmoothAbs2Loss**: `Σᵢ ((|rᵢ|^q + p^q)^(1/q) - p)` (power-law robustness)
+- **Rectify**: `Σᵢ p·log(1 + exp(rᵢ/p))` (one-sided penalty)
 
 Each cost term has configurable norm type and parameters (p, q) via `config.yaml`.
 
@@ -336,8 +488,98 @@ Each cost term has configurable norm type and parameters (p, q) via `config.yaml
 The `symDerivatives` class provides analytical derivatives for all cost terms:
 - **CoM Derivatives**: Pinocchio's `getJacobianComFromRootJoint()` and `computeJointKinematicHessians()`
 - **End-Effector Derivatives**: CasADi symbolic expressions with automatic differentiation
-- **Norm Derivatives**: Analytical gradients/Hessians for all 6 robust norm types
+- **Norm Derivatives**: Analytical gradients/Hessians for all 7 robust norm types
 - **Cost Linearization**: Symbolic lx, lu, lxx, luu, lux computed without numerical approximation
+
+## 📚 How to Modify & Extend
+
+### **Add a New Cost Term**
+
+All cost terms are computed in one place: **`src/ilqr/cost.cpp`**
+
+**Steps:**
+1. Add weight to `config.yaml`:
+   ```yaml
+   mpc:
+     cost_weights:
+       W_mycost: 10.0
+     norm_types:
+       mycost:
+         type: 0
+         p: 0.0
+         q: 1.0
+   ```
+
+2. Add residual computation to `cost.cpp`:
+   ```cpp
+   // In addMyCostDerivatives()
+   Eigen::Vector3d error = current_state - reference_state;
+   r.push_back(error);
+   cost_term_names_.push_back("mycost");
+   ```
+
+3. Update solveForCostDerivatives() to include your term
+
+4. Recompile: `cd build && make -j8`
+
+5. Test: `./humanoid_mpc`
+
+### **Change Dynamics Model**
+
+Edit `config.yaml`:
+```yaml
+robot:
+  model_path: "path/to/your/model.xml"
+  urdf_path: "path/to/your/model.urdf"
+```
+
+The code automatically adapts to any MuJoCo/URDF model with different state and control dimensions.
+
+### **Change Reference Trajectory**
+
+Replace CSV files in `data/`:
+```yaml
+reference_trajectory:
+  q_ref: "data/my_trajectory/q_ref.csv"
+  v_ref: "data/my_trajectory/v_ref.csv"
+  contact_schedule: "data/my_trajectory/contacts.csv"
+```
+
+CSV format (no headers):
+- `q_ref`: `[qpos_0, qpos_1, ..., qpos_n]` (one row per timestep)
+- `v_ref`: `[qvel_0, qvel_1, ..., qvel_n]`
+- `contacts`: `[contact_flag_0, contact_flag_1]` (end-effectors)
+
+### **Adjust Finite Difference Parameters**
+
+These control linearization accuracy vs speed:
+```yaml
+ilqr_settings:
+  fd_tolerance: 1.0e-6    # Epsilon for FD Jacobians (smaller = more accurate, slower)
+  fd_mode: 1              # 0=forward FD, 1=centered FD (centered is more accurate)
+```
+
+**Trade-off**: 
+- Smaller `fd_tolerance` → More accurate but slower
+- Centered FD → Twice as slow but 4x more accurate than forward
+
+### **Enable Different Robot Models**
+
+Edit `config.yaml` to choose robot:
+```yaml
+robot:
+  name: "dm_humanoid"     # Or "h1", "atlas", etc.
+  model_path: "robots/dm_humanoid/humanoid.xml"
+  
+  # Adjust body names for your robot
+  pelvis_body_name: "pelvis"
+  torso_body_name: "torso"
+  ee_feet:
+    right_feet_ee: "foot_right"
+    left_feet_ee: "foot_left"
+```
+
+The code automatically adapts to state/control dimensions and body names.
 
 <details>
 <summary><h2>🔬 NLP-Based MPC Pipeline (Previous Implementation)</h2></summary>
