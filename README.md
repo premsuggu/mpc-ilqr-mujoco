@@ -58,8 +58,12 @@ cmake --build build --config Release -j$(nproc)
 ```
 
 ```bash
-# 5. Run MPC simulation
+# 5. Run MPC simulation (default config.yaml)
 ./build/humanoid_mpc
+
+# Optional: run with an explicit config file
+./build/humanoid_mpc config_dm.yaml
+./build/humanoid_mpc config_h1.yaml
 ```
 
 
@@ -91,8 +95,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 ```
 ```bash
-# 6. Run MPC simulation
+# 6. Run MPC simulation (default config.yaml)
 ./build/humanoid_mpc
+
+# Optional: run with an explicit config file
+./build/humanoid_mpc config_dm.yaml
+./build/humanoid_mpc config_h1.yaml
 ```
 
 ### **Windows**
@@ -123,8 +131,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j %NUMBER_OF_PROCESSORS%
 ```
 ```powershell
-# 7. Run MPC simulation
+# 7. Run MPC simulation (default config.yaml)
 build\Release\humanoid_mpc.exe
+
+# Optional: run with an explicit config file
+build\Release\humanoid_mpc.exe config_dm.yaml
+build\Release\humanoid_mpc.exe config_h1.yaml
 ```
 
 **Note for Windows Users:**
@@ -142,25 +154,35 @@ build\Release\humanoid_mpc.exe
 # Activate environment
 conda activate humanoid-mpc
 
-# Run iLQR-based MPC (faster, gradient-based)
-./build/humanoid_mpc  # Linux/macOS
-build\Release\humanoid_mpc.exe  # Windows
+# Run iLQR-based MPC (uses config.yaml by default)
+./build/humanoid_mpc                 # Linux/macOS
+build\Release\humanoid_mpc.exe      # Windows
+
+# Run with explicit config (recommended when switching robot/task)
+./build/humanoid_mpc config_dm.yaml  # DeepMind humanoid
+./build/humanoid_mpc config_h1.yaml  # H1
 ```
 
-**Output:**
+The executable accepts an optional config path argument:
+
+```bash
+./build/humanoid_mpc <path-to-config.yaml>
 ```
-Configuration loaded successfully from config.yaml
+
+**Output (example):**
+```
+Configuration loaded successfully from config_h1.yaml
 Model loaded successfully:
-  Left foot: 'foot_left' (body ID 10)
-  Right foot: 'foot_right' (body ID 7)
+  Left foot: 'left_ankle_link' (body ID 6)
+  Right foot: 'right_ankle_link' (body ID 11)
 ...
 FD parameters set: tolerance=1e-6, mode=centered
-Step 0/50 | Cost: 830.966 | (X,Y,Z): (0,0,1.282) m | Control range: [-0.379, 0.346]
-Step 1/50 | Cost: 827.3 | (X,Y,Z): (-0.001, 0.000, 1.283) m | Control range: [-0.379, 0.346]
+Step 0/50 | Cost: 22.2642 | (X,Y,Z): (0,0,1.0432) m | Control range: [-0.314, 0.314]
+Step 1/50 | Cost: 22.5853 | (X,Y,Z): (0.00001, 0.00001, 1.04345) m | Control range: [-0.314, 0.314]
 ...
-Step 49/50 | Cost: 121.151 | (X,Y,Z): (-0.097, 0.046, 0.975) m
-Simulation completed in 9009 ms
-Average step time: 180.18 ms
+Step 49/50 | Cost: 117.736 | (X,Y,Z): (0.00336, -0.00005, 1.03927) m
+Simulation completed in 18981 ms
+Average step time: 379.62 ms
 ```
 
 **Key metrics:**
@@ -171,7 +193,7 @@ Average step time: 180.18 ms
 
 ### 2. Configure Cost Functions
 
-All cost configuration happens in **`config.yaml`** - no code changes needed!
+All cost configuration happens in YAML files (for example `config.yaml`, `config_dm.yaml`, `config_h1.yaml`) - no code changes needed!
 
 #### **2.1 Cost Weights**
 
@@ -330,9 +352,16 @@ conda activate humanoid-mpc
 
 # Launch MuJoCo viewer with optimal trajectory
 python simulate.py
+
+# Useful explicit modes
+python simulate.py --config config_h1.yaml
+python simulate.py --traj results/q_optimal.csv
+python simulate.py --config config_h1.yaml --traj results/q_optimal.csv
+python simulate.py --model robots/h1_description/mjcf/scene.xml --traj results/q_optimal.csv
 ```
 
 This opens an interactive 3D viewer showing the robot executing the MPC trajectory.
+`simulate.py` now auto-selects a model that matches trajectory dimension (`nq`) to avoid common H1/DM mismatch errors.
 
 ### 5. Plot Performance Metrics
 
@@ -356,6 +385,9 @@ cmake --build build --config Release -j$(nproc)
 
 # Run to see detailed timing
 ./build/humanoid_mpc
+
+# Or profile a specific config
+./build/humanoid_mpc config_h1.yaml
 ```
 
 **Profiling output example:**
