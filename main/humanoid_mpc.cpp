@@ -61,9 +61,14 @@ void printProfilingResults();
 
  
 // MAIN FUNCTION
-int main() {
-    Config config = loadConfigFromFile("config.yaml");
-    std::cout << "Configuration loaded successfully from config.yaml" << std::endl;
+int main(int argc, char** argv) {
+    std::string config_path = "config.yaml";
+    if (argc > 1) {
+        config_path = argv[1];
+    }
+
+    Config config = loadConfigFromFile(config_path);
+    std::cout << "Configuration loaded successfully from " << config_path << std::endl;
 
     RobotUtils robot;
     setupSimulation(robot, config);

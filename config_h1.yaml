@@ -11,9 +11,9 @@ robot:
   waist_lower_body_name: "torso_link"
 
 reference_trajectory:
-  q_ref: "data/h1/standing/q_T.csv"
+  q_ref: "data/h1/standing/q_standing.csv"
   v_ref: "data/h1/standing/v_standing.csv"
-  contact_schedule: "data/h1/standing/contact_T.csv"
+  contact_schedule: "data/h1/standing/contact_standing.csv"
 
 mpc:
   horizon: 25

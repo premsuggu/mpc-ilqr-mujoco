@@ -1,0 +1,162 @@
+robot:
+  name: dm_humanoid
+  model_path: "robots/dm_humanoid/humanoid.xml"
+  urdf_path: "robots/dm_humanoid/humanoid.xml"
+  
+  ee_feet:
+    right_feet_ee: "foot_right"
+    left_feet_ee: "foot_left"
+  pelvis_body_name: "pelvis"    # Body whose z-position is used in Pelvis/Feet cost
+  torso_body_name:  "torso"     # Floating-base body (used as one of 4 forward-dir bodies in Walk cost)
+  waist_lower_body_name: "waist_lower"  # DeepMind: waist_lower_subcomvel = subtree CoM vel of this body
+
+reference_trajectory:
+  q_ref: "data/dm_humanoid/q_standing.csv"
+  v_ref: "data/dm_humanoid/v_standing.csv"
+  contact_schedule: "data/dm_humanoid/contact_standing.csv"
+
+mpc:
+  horizon: 23              # MJPC: 0.35s / 0.015s = 23 steps
+  dt: 0.015                # MJPC timestep (15ms)
+  physics_dt: 0.015        # MuJoCo substep (keep fine for stability)
+  gravity: [0.0, 0.0, -1.0]  # Standard gravity (MJPC uses full gravity)
+  sim_steps: 50            # Total simulation steps
+  contact_impratio: 100.0  # Contact stiffness
+
+  cost_weights:
+    # -------------------------------------------------------------------------
+    # Posture cost — penalises joint angles qpos[7:nq] from reference
+    # DeepMind stand: NO posture term (disabled)
+    # -------------------------------------------------------------------------
+    posture:
+      weight:          0.0     # DISABLED for stand task (DeepMind has no posture)
+      terminal_weight: 0.1     # Terminal cost weight (independent of running)
+
+    # -------------------------------------------------------------------------
+    # Control regularization — uniform penalty on actuator torques
+    # DeepMind stand task: "Control", Cosh norm (type=3, p=0.3), weight=0.025
+    # -------------------------------------------------------------------------
+    control:
+      R_control: 0.025
+
+    # -------------------------------------------------------------------------
+    # Task-specific weights — used by addXxxCostDerivatives in ilqr.cpp
+    # -------------------------------------------------------------------------
+    W_height: 100.0          # DeepMind stand "Height" = 100.0 (SmoothAbsLoss p=0.1)
+    W_vel: 10.0              # DeepMind stand "CoM Vel." = 10.0 (Base xy velocity damping)
+    W_joint_vel: 0.01        # DeepMind stand "Joint Vel." = 0.01 (Joint velocity damping)
+    W_upright: 5.0           # DeepMind "Upright" = 5.0
+    w_balance: 50.0          # DeepMind stand "Balance" = 50.0 (SmoothAbsLoss p=0.1)
+    balance_time_constant: 0.2  # Capture point time constant (0.2s for stand, 0.3s for walk)
+    W_pelvis_feet: 1.0       # DeepMind "Pelvis/Feet" = 1.0 (RectifyLoss, one-sided)
+    W_walk: 0.0              # DeepMind "Walk" = 1.0 — disabled for standing task
+    speed_goal: 0.0          # DeepMind default walking speed (m/s). task.xml: residual_Speed data="0.5"
+
+  # Norm types for each cost term - EXACT DeepMind MJPC stand values
+  # Available types: quadratic (0), l22 (1), l2 (2), cosh (3), smooth_abs_loss (6), smooth_abs_2_loss (7), rectify (8)
+  # Parameters: p (regularization), q (power parameter)
+  norm_types:
+    # Posture (joint angles [7:nq]) - DISABLED for stand (weight=0)
+    posture:
+      type: 0      # Quadratic: x^T * x
+      p: 0.0
+      q: 1.0
+
+    # Height (torso z) - SmoothAbsLoss with p=0.1 (DeepMind stand type 6)
+    height:
+      type: 6      # SmoothAbsLoss: sqrt(r^2 + p^2) - p
+      p: 0.1
+      q: 1.0
+
+    # Balance (capture point) - SmoothAbsLoss with p=0.1 (DeepMind stand type 6)
+    balance:
+      type: 6      # SmoothAbsLoss: sqrt(r^2 + p^2) - p
+      p: 0.1
+      q: 1.0
+    
+    # Pelvis/Feet alignment - RectifyLoss p=0.05 (DeepMind walk.cc:52-57)
+    pelvis_feet:
+      type: 8      # RectifyLoss: p*log(1 + exp(r/p))
+      p: 0.05
+      q: 1.0       # Not used for RectifyLoss
+    
+    # Upright (orientation) - L2 norm with p=0.01
+    upright:
+      type: 2      # L2: sqrt(x*x' + p^2) - p
+      p: 0.01
+      q: 1.0       # Not used for L2
+    
+    # CoM velocity (base xy) - Quadratic norm (DeepMind stand "CoM Vel.")
+    velocity:
+      type: 0      # Quadratic: 0.5 * x^T * x
+      p: 0.0
+      q: 1.0
+    
+    # Joint velocity (21 joints) - Quadratic norm (DeepMind stand "Joint Vel.")
+    joint_vel:
+      type: 0      # Quadratic: 0.5 * x^T * x
+      p: 0.0
+      q: 1.0
+    
+    # Control (actuator torques) - Cosh norm with p=0.3 (DeepMind stand task)
+    control:
+      type: 3      # Cosh: p^2 * (cosh(x/p) - 1)
+      p: 0.3
+      q: 1.0
+    
+    # Walk (forward velocity toward speed_goal) - SmoothAbs2Loss p=0.5, q=3.0
+    walk:
+      type: 7      # SmoothAbs2Loss
+      p: 0.5
+      q: 3.0
+
+  constraints:
+    # HARD CONSTRAINTS NOW USED: Control clamping applied in unpackControlToData()
+    # All soft constraint penalty code removed (Phase 2 complete)
+    joint_limit_weight: 0.0       # Unused - soft constraints removed
+    torque_limit_weight: 0.0      # Unused - soft constraints removed
+
+  # iLQR solver settings - ONLY parameters actually implemented in our code
+  # See docs/ilqr_parameter_comparison.md for full details
+  ilqr_settings:
+    # Core solver parameters
+    initial_regularization: 1.0e-3         # Initial regularization value
+    max_iterations: 10                     # Maximum iLQR iterations
+    tolerance: 1.0e-4                      # Convergence tolerance
+    
+    # Regularization bounds and adaptation (aligned with MJPC where possible)
+    reg_min: 1.0e-6                        # Minimum regularization (MJPC: 1e-6)
+    reg_max: 1.0e6                         # Maximum regularization (MJPC: 1e6, was 100.0)
+    reg_increase_factor: 10.0              # Factor to increase regularization
+    reg_decrease_factor: 10.0              # Factor to decrease regularization
+    
+    # Trust region thresholds for regularization adaptation (aligned with MJPC)
+    trust_region_good: 0.5                 # Good improvement threshold (MJPC: z > 0.5)
+    trust_region_poor: 0.25                 # Poor improvement threshold (MJPC: z < 0.1)
+    
+    # Line search parameters (log-scale, DeepMind MJPC style)
+    num_line_search_steps: 30              # Number of line search candidates (MJPC default: 10)
+    min_linesearch_step: 1.0e-3            # Minimum line search step size (MJPC default: 1e-3)
+    line_search_tolerance: 1.0e-6          # Line search convergence tolerance
+    
+    # Quu regularization for numerical stability
+    quu_regularization: 1.0e-4             # Added to Quu diagonal
+    
+    # Convergence criterion
+    convergence_threshold: 1.0e-8          # Cost improvement threshold
+    
+    # Finite difference parameters (DeepMind MJPC compatible)
+    fd_tolerance: 1.0e-6                   # FD epsilon (DeepMind default: 1e-6)
+    fd_mode: 1                              # 0=forward, 1=centered (DeepMind: configurable)
+
+paths:
+  logs_dir: "logs"
+  results_dir: "results"
+
+logging:
+  verbose: true
+  save_trajectories: true
+  results_path: "results"
+
+visualization:
+  enable_rerun: False

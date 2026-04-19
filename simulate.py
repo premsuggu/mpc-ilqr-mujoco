@@ -18,68 +18,122 @@ import mujoco.viewer
 import time
 import os
 import yaml
+import argparse
 
 def load_config(config_path="config.yaml"):
     """Load configuration from YAML file"""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+
+def load_trajectory_q(q_optimal_path):
+    """Load q trajectory matrix from q_optimal.csv."""
+    q_df = pd.read_csv(q_optimal_path)
+    q_columns = [col for col in q_df.columns if str(col).startswith('q_')]
+
+    if not q_columns:
+        raise ValueError("No q_* columns found in trajectory CSV")
+
+    q_trajectory = q_df[q_columns].values
+    return q_trajectory
+
+
+def try_load_model(path):
+    """Return MuJoCo model for path if it exists and loads, else None."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        return mujoco.MjModel.from_xml_path(path)
+    except Exception:
+        return None
+
+
+def select_model_for_trajectory(config_model_path, traj_nq):
+    """Pick the first loadable model whose nq matches trajectory nq."""
+    candidates = [
+        config_model_path,
+        "robots/h1_description/mjcf/scene.xml",
+        "robots/dm_humanoid/humanoid.xml",
+    ]
+
+    checked = []
+    for path in candidates:
+        if not path or path in checked:
+            continue
+        checked.append(path)
+        model = try_load_model(path)
+        if model is None:
+            continue
+        if model.nq == traj_nq:
+            return path, model
+
+    # Fall back to configured model if nothing matches.
+    fallback_model = try_load_model(config_model_path)
+    return config_model_path, fallback_model
+
 def main():
+    parser = argparse.ArgumentParser(description="Visualize MPC q trajectory in MuJoCo")
+    parser.add_argument("--config", default="config.yaml", help="Path to YAML config")
+    parser.add_argument("--traj", default=None, help="Path to q_optimal.csv")
+    parser.add_argument("--model", default=None, help="Override model XML path")
+    args = parser.parse_args()
+
     # Load configuration
     try:
-        config = load_config()
+        config = load_config(args.config)
         model_path = config['robot']['model_path']
         results_dir = config['paths']['results_dir']
         q_optimal_path = os.path.join(results_dir, "q_optimal.csv")
     except FileNotFoundError:
-        print("Warning: config.yaml not found, using default paths")
+        print(f"Warning: {args.config} not found, using default paths")
         model_path = "robots/h1_description/mjcf/scene.xml"
         q_optimal_path = "results/q_optimal.csv"
     except KeyError as e:
-        print(f"Warning: Missing key in config.yaml: {e}, using default paths")
+        print(f"Warning: Missing key in {args.config}: {e}, using default paths")
         model_path = "robots/h1_description/mjcf/scene.xml"
         q_optimal_path = "results/q_optimal.csv"
+
+    if args.traj:
+        q_optimal_path = args.traj
     
-    # Check if files exist
-    if not os.path.exists(model_path):
-        print(f"Error: Model file not found at {model_path}")
-        print("Make sure you're running this script from the project root directory.")
-        return
-    
+    # Check if trajectory exists
     if not os.path.exists(q_optimal_path):
         print(f"Error: q_optimal.csv not found at {q_optimal_path}")
         print("Please run the MPC simulation first to generate the trajectory file.")
         return
-    
-    # Load MuJoCo model
-    print("Loading MuJoCo model...")
-    model = mujoco.MjModel.from_xml_path(model_path)
-    data = mujoco.MjData(model)
-    
-    model.opt.gravity = np.array([0, 0, 0])
-    
-    print(f"Model loaded: nq={model.nq}, nv={model.nv}, nu={model.nu}")
-    
+
     # Load optimal trajectory from MPC
-    q_df = pd.read_csv(q_optimal_path)
-    
-    # Extract only the q columns (skip step and time_sec columns)
-    q_columns = [col for col in q_df.columns if col.startswith('q_')]
-    q_trajectory = q_df[q_columns].values
-    
-    print(f"Model's nq: {model.nq} | Trajectory's nq: {q_trajectory.shape[1]}")
-    
-    # Verify dimensions
-    if q_trajectory.shape[1] != model.nq:
-        print(f"Warning: Trajectory dimension mismatch!")
-        print(f"Model nq: {model.nq}, Trajectory columns: {q_trajectory.shape[1]}")
+    q_trajectory = load_trajectory_q(q_optimal_path)
+    traj_nq = q_trajectory.shape[1]
+
+    # Load a model that matches trajectory nq (or explicit override)
+    if args.model:
+        model_path = args.model
+        model = try_load_model(model_path)
+    else:
+        model_path, model = select_model_for_trajectory(model_path, traj_nq)
+
+    if model is None:
+        print(f"Error: Could not load model from {model_path}")
         return
-    
+
+    data = mujoco.MjData(model)
+    model.opt.gravity = np.array([0, 0, 0])
+
+    print("Loading MuJoCo model...")
+    print(f"Model path: {model_path}")
+    print(f"Model loaded: nq={model.nq}, nv={model.nv}, nu={model.nu}")
+    print(f"Model's nq: {model.nq} | Trajectory's nq: {traj_nq}")
+
+    if traj_nq != model.nq:
+        print("Warning: Trajectory dimension mismatch!")
+        print(f"Model nq: {model.nq}, Trajectory columns: {traj_nq}")
+        print("Tip: pass --model explicitly, or regenerate q_optimal.csv for this model.")
+        return
+
     # Add some standing poses at the beginning for better visualization
     print("Adding standing poses at beginning...")
-    standing_pose = np.zeros((5, model.nq))
-    standing_pose[:, 2] = 1.2820         # Z (base/pelvis height) for h1
-    standing_pose[:, 3] = 1.0            # quaternion w
+    standing_pose = np.tile(q_trajectory[0], (5, 1))
     
     # Combine standing + MPC trajectory
     full_trajectory = np.vstack((standing_pose, q_trajectory))
