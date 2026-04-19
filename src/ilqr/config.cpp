@@ -103,6 +103,9 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.convergence_threshold = solver_node["convergence_threshold"].as<double>();
             config.mpc.ilqr_settings.fd_tolerance = solver_node["fd_tolerance"].as<double>();
             config.mpc.ilqr_settings.fd_mode = solver_node["fd_mode"].as<int>();
+            config.mpc.ilqr_settings.debug_qacc_enable = solver_node["debug_qacc_enable"].as<bool>(false);
+            config.mpc.ilqr_settings.debug_qacc_threshold = solver_node["debug_qacc_threshold"].as<double>(1e4);
+            config.mpc.ilqr_settings.debug_qacc_max_logs = solver_node["debug_qacc_max_logs"].as<int>(20);
         } else {
             // Default values if not specified
             config.mpc.ilqr_settings.initial_regularization = 1e-6;
@@ -121,6 +124,9 @@ Config loadConfigFromFile(const std::string& filepath) {
             config.mpc.ilqr_settings.convergence_threshold = 1e-8;
             config.mpc.ilqr_settings.fd_tolerance = 1e-6;
             config.mpc.ilqr_settings.fd_mode = 0;
+            config.mpc.ilqr_settings.debug_qacc_enable = false;
+            config.mpc.ilqr_settings.debug_qacc_threshold = 1e4;
+            config.mpc.ilqr_settings.debug_qacc_max_logs = 20;
         }
         
         // Load norm types for cost terms

@@ -4,6 +4,8 @@
 #include <sstream>
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 
 // Define M_PI (for MSVC/Windows compatibility)
 #ifndef M_PI
@@ -19,7 +21,96 @@ RobotUtils::RobotUtils()
       pelvis_body_name_("pelvis"), torso_body_name_("torso"),
       waist_lower_body_name_("waist_lower"),
       linearization_epsilon_(1e-4),
-      fd_tolerance_(1e-6), fd_mode_(0) { 
+      fd_tolerance_(1e-6), fd_mode_(0),
+      instability_debug_enabled_(false), instability_qacc_threshold_(1e5),
+      instability_debug_count_(0), instability_debug_limit_(20) {
+    const char* dbg = std::getenv("MPC_DEBUG_QACC");
+    if (dbg && std::string(dbg) != "0") {
+        instability_debug_enabled_ = true;
+    }
+    const char* thr = std::getenv("MPC_DEBUG_QACC_THRESHOLD");
+    if (thr) {
+        instability_qacc_threshold_ = std::atof(thr);
+        if (!(instability_qacc_threshold_ > 0.0)) {
+            instability_qacc_threshold_ = 1e5;
+        }
+    }
+    const char* max_logs = std::getenv("MPC_DEBUG_QACC_MAX_LOGS");
+    if (max_logs) {
+        instability_debug_limit_ = std::atoi(max_logs);
+        if (instability_debug_limit_ <= 0) {
+            instability_debug_limit_ = 20;
+        }
+    }
+}
+
+void RobotUtils::configureInstabilityDebug(bool enabled, double qacc_threshold, int max_logs) {
+    instability_debug_enabled_ = enabled;
+    instability_qacc_threshold_ = (qacc_threshold > 0.0) ? qacc_threshold : 1e5;
+    instability_debug_limit_ = (max_logs > 0) ? max_logs : 20;
+    instability_debug_count_ = 0;
+}
+
+void RobotUtils::logQaccInstabilityIfAny(const mjData* source_data, const char* context) {
+    if (!instability_debug_enabled_ || !model_ || !source_data) return;
+    if (instability_debug_count_ >= instability_debug_limit_) return;
+
+    bool has_nonfinite = false;
+    int worst_dof = -1;
+    double worst_abs = 0.0;
+
+    for (int i = 0; i < model_->nv; ++i) {
+        const double a = source_data->qacc[i];
+        if (!std::isfinite(a)) {
+            has_nonfinite = true;
+            worst_dof = i;
+            worst_abs = std::numeric_limits<double>::infinity();
+            break;
+        }
+        const double aa = std::abs(a);
+        if (aa > worst_abs) {
+            worst_abs = aa;
+            worst_dof = i;
+        }
+    }
+
+    if (!has_nonfinite && worst_abs < instability_qacc_threshold_) return;
+
+    instability_debug_count_++;
+
+    const int dof = std::max(0, worst_dof);
+    const int joint_id = (dof < model_->nv) ? model_->dof_jntid[dof] : -1;
+    const int qpos_idx = (joint_id >= 0 && joint_id < model_->njnt) ? model_->jnt_qposadr[joint_id] : -1;
+    const double qpos_val = (qpos_idx >= 0 && qpos_idx < model_->nq) ? source_data->qpos[qpos_idx] : std::numeric_limits<double>::quiet_NaN();
+    const double qvel_val = (dof < model_->nv) ? source_data->qvel[dof] : std::numeric_limits<double>::quiet_NaN();
+    const double qacc_val = (dof < model_->nv) ? source_data->qacc[dof] : std::numeric_limits<double>::quiet_NaN();
+
+    double ctrl_min = 0.0;
+    double ctrl_max = 0.0;
+    if (model_->nu > 0) {
+        ctrl_min = source_data->ctrl[0];
+        ctrl_max = source_data->ctrl[0];
+        for (int i = 1; i < model_->nu; ++i) {
+            ctrl_min = std::min(ctrl_min, static_cast<double>(source_data->ctrl[i]));
+            ctrl_max = std::max(ctrl_max, static_cast<double>(source_data->ctrl[i]));
+        }
+    }
+
+    std::cerr << "[INSTABILITY DEBUG] context=" << context
+              << " time=" << source_data->time
+              << " ncon=" << source_data->ncon
+              << " dof=" << dof
+              << " qacc=" << qacc_val
+              << " qvel=" << qvel_val
+              << " qpos=" << qpos_val
+              << " ctrl_range=[" << ctrl_min << ", " << ctrl_max << "]"
+              << " base_xyz=[" << source_data->qpos[0] << ", " << source_data->qpos[1] << ", " << source_data->qpos[2] << "]"
+              << std::endl;
+
+    if (instability_debug_count_ == instability_debug_limit_) {
+        std::cerr << "[INSTABILITY DEBUG] reached log limit (" << instability_debug_limit_
+                  << "). Increase MPC_DEBUG_QACC_MAX_LOGS if needed." << std::endl;
+    }
 }
 
 RobotUtils::~RobotUtils() {
@@ -134,6 +225,7 @@ void RobotUtils::setControl(const Eigen::VectorXd& u) {
 void RobotUtils::step() {
     if (!model_ || !data_) return;
     mj_step(model_, data_);
+    logQaccInstabilityIfAny(data_, "step");
 }
 
 // Predict the next state given x and u, using a separate data buffer
@@ -145,7 +237,9 @@ void RobotUtils::rolloutOneStep(const Eigen::VectorXd& x, const Eigen::VectorXd&
     unpackStateToData(x, data_temp_);
     unpackControlToData(u, data_temp_);
     mj_forward(model_, data_temp_);
+    logQaccInstabilityIfAny(data_temp_, "rollout_mj_forward");
     mj_step(model_, data_temp_);
+    logQaccInstabilityIfAny(data_temp_, "rollout_mj_step");
     packStateFromData(x_next, data_temp_);
     // No need to restore original state
 }
@@ -173,6 +267,7 @@ void RobotUtils::linearizeDynamicsFD(const Eigen::VectorXd& x, const Eigen::Vect
     
     // Compute forward dynamics at current state
     mj_forward(model_, data_);
+    logQaccInstabilityIfAny(data_, "linearize_mj_forward");
     
     // Use MuJoCo's built-in finite difference function (DeepMind MJPC approach)
     // This properly handles quaternions and is more efficient than manual loops

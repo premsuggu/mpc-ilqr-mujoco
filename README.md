@@ -363,6 +363,48 @@ python simulate.py --model robots/h1_description/mjcf/scene.xml --traj results/q
 This opens an interactive 3D viewer showing the robot executing the MPC trajectory.
 `simulate.py` now auto-selects a model that matches trajectory dimension (`nq`) to avoid common H1/DM mismatch errors.
 
+### 4.1 Debug QACC Instability (NaN/Inf/Huge Warnings)
+
+If you see warnings like:
+
+```
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable.
+```
+
+use the built-in instability diagnostics to print the exact offending rollout state.
+
+```bash
+# In config_h1.yaml (or your active config file), set:
+# mpc.ilqr_settings.debug_qacc_enable: true
+# mpc.ilqr_settings.debug_qacc_threshold: 1.0e4
+# mpc.ilqr_settings.debug_qacc_max_logs: 20
+
+./build/humanoid_mpc config_h1.yaml
+```
+
+Example debug line:
+
+```
+[INSTABILITY DEBUG] context=rollout_mj_forward time=0.26 ncon=9 dof=22 qacc=11077 qvel=-124.5 qpos=-4.48 ctrl_range=[-60.1, 121.5] base_xyz=[0.016, -0.294, 1.172]
+```
+
+How to read it:
+- `context`: where it happened (`rollout_mj_forward`, `rollout_mj_step`, or `step`)
+- `dof`: unstable velocity DOF index
+- `qacc`, `qvel`, `qpos`: acceleration/velocity/position at that DOF
+- `ctrl_range`: min/max control in that candidate rollout
+- `base_xyz`: floating base pose when instability appears
+
+Important interpretation:
+- If instability appears mostly in `rollout_*` contexts but not in `step`, the accepted MPC trajectory is typically fine and only some trial line-search candidates are unstable.
+- If instability appears in `step`, your executed control/state is unstable and needs stronger damping/tighter limits.
+
+Typical mitigation knobs (in `config_h1.yaml`):
+- Increase control penalty: `R_control` (reduces aggressive torques)
+- Increase damping: `reg_min`, `quu_regularization`
+- Reduce line search aggressiveness: `num_line_search_steps`
+- Prefer more robust linearization if needed: `fd_mode` (0 forward, 1 centered)
+
 ### 5. Plot Performance Metrics
 
 ```bash
@@ -813,6 +855,37 @@ python simulate.py
 # Solution: Run from project root directory
 cd /path/to/Mujoco-MPC
 ./build/humanoid_mpc  # NOT from build/ directory
+```
+
+**Problem:** `WARNING: Nan, Inf or huge value in QACC at DOF ...`
+
+This usually indicates aggressive iLQR trial rollouts, not necessarily failure of the accepted simulation step.
+
+```yaml
+mpc:
+  ilqr_settings:
+    debug_qacc_enable: true
+    debug_qacc_threshold: 1.0e4
+    debug_qacc_max_logs: 20
+```
+
+```bash
+./build/humanoid_mpc config_h1.yaml
+```
+
+If warnings persist in executed `step` context, apply these mitigations:
+
+```yaml
+mpc:
+  cost_weights:
+    control:
+      R_control: 0.01
+    W_joint_vel: 0.1
+  ilqr_settings:
+    reg_min: 1.0e-4
+    quu_regularization: 1.0e-2
+    num_line_search_steps: 12
+    fd_mode: 0
 ```
 
 **Problem:** Negative time values in profiling output

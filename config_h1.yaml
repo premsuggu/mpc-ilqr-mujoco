@@ -29,11 +29,11 @@ mpc:
       terminal_weight: 100.0
 
     control:
-      R_control: 0.001
+      R_control: 0.01
 
     W_height: 100.0
     W_vel: 0.0
-    W_joint_vel: 1.0
+    W_joint_vel: 0.1
     W_upright: 20.0
     w_balance: 30.0
     balance_time_constant: 0.2
@@ -87,19 +87,22 @@ mpc:
     initial_regularization: 1.0e-3
     max_iterations: 20
     tolerance: 1.0e-4
-    reg_min: 1.0e-6
+    reg_min: 1.0e-4
     reg_max: 1.0e6
     reg_increase_factor: 10.0
     reg_decrease_factor: 10.0
     trust_region_good: 0.5
     trust_region_poor: 0.25
-    num_line_search_steps: 30
+    num_line_search_steps: 12
     min_linesearch_step: 1.0e-3
     line_search_tolerance: 1.0e-6
-    quu_regularization: 1.0e-4
+    quu_regularization: 1.0e-2
     convergence_threshold: 1.0e-8
     fd_tolerance: 1.0e-6
-    fd_mode: 1
+    fd_mode: 0
+    debug_qacc_enable: false
+    debug_qacc_threshold: 1.0e4
+    debug_qacc_max_logs: 20
 
 paths:
   logs_dir: "logs"

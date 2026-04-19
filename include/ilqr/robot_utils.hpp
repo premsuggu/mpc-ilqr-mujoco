@@ -59,6 +59,7 @@ public:
         fd_tolerance_ = fd_tol;
         fd_mode_ = fd_mode;
     }
+    void configureInstabilityDebug(bool enabled, double qacc_threshold, int max_logs);
 
     // Cost functions
     double stageCost(int t, const Eigen::VectorXd& x, const Eigen::VectorXd& u) const;
@@ -174,6 +175,12 @@ private:
     // DeepMind MJPC compatible FD parameters
     double fd_tolerance_;          // Finite difference epsilon (default: 1e-6)
     int fd_mode_;                   // 0=forward, 1=centered (default: 0)
+
+    // Instability diagnostics (prints state/control context when qacc blows up)
+    bool instability_debug_enabled_;
+    double instability_qacc_threshold_;
+    int instability_debug_count_;
+    int instability_debug_limit_;
     
     // End-effector site IDs
     std::vector<int> ee_site_ids_;
@@ -183,6 +190,7 @@ private:
 
     // Helper functions for packing/unpacking (optimized with Eigen::Map)
     void buildJointNameMap();
+    void logQaccInstabilityIfAny(const mjData* source_data, const char* context);
     void unpackStateToData(const Eigen::VectorXd& x, mjData* target_data);
     void unpackControlToData(const Eigen::VectorXd& u, mjData* target_data);  
     void packStateFromData(Eigen::VectorXd& x, mjData* source_data) const;

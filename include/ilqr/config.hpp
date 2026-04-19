@@ -56,6 +56,11 @@ struct MpcParams {
         // Finite difference parameters (DeepMind MJPC compatible)
         double fd_tolerance;              // FD epsilon (DeepMind: 1e-6)
         int fd_mode;                      // 0=forward, 1=centered (DeepMind: configurable)
+
+        // Instability diagnostics (QACC)
+        bool debug_qacc_enable;           // Enable runtime QACC debug logging
+        double debug_qacc_threshold;      // Log when |qacc| exceeds threshold
+        int debug_qacc_max_logs;          // Maximum number of debug lines to print
     } ilqr_settings;
 };
 

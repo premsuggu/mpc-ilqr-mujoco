@@ -178,6 +178,11 @@ void setupSimulation(RobotUtils& robot, Config& config) {
     robot.setTorsoBodyName(config.torso_body_name);
     robot.setWaistLowerBodyName(config.waist_lower_body_name);
     robot.setConstraintWeights(config.mpc.joint_limit_weight, config.mpc.torque_limit_weight);
+    robot.configureInstabilityDebug(
+        config.mpc.ilqr_settings.debug_qacc_enable,
+        config.mpc.ilqr_settings.debug_qacc_threshold,
+        config.mpc.ilqr_settings.debug_qacc_max_logs
+    );
     if (!robot.loadReferences(config.q_ref_path, config.v_ref_path)) {
         throw std::runtime_error("Failed to load reference trajectories.");
     }
