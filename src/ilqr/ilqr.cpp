@@ -639,7 +639,7 @@ double iLQR::computeTotalCost(const std::vector<Eigen::VectorXd>& x_traj,
         }
     }
     
-    // Hard constraints now used (control clamping) - no soft constraint costs
+    // UPDATE: Hard constraints now used (control clamping) - no soft constraint costs
 
     return total_cost;
 }

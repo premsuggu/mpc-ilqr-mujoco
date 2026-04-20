@@ -2,7 +2,7 @@
 
 # Humanoid Model Predictive Control (MPC) with iLQR
 
-A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization. **Closely aligned with DeepMind MJPC architecture.**
+A cross-platform implementation of Model Predictive Control for humanoid robots using MuJoCo physics simulation and iterative Linear Quadratic Regulator (iLQR) optimization.
 
 ![Humanoid Standing Balance](results/T_h1.gif)
 
@@ -11,7 +11,7 @@ A cross-platform implementation of Model Predictive Control for humanoid robots 
 - **DeepMind MJPC Alignment**: Implements exact cost functions, robust norms, and optimization algorithms from DeepMind's MJPC
 - **iLQR Solver**: Iterative Linear Quadratic Regulator with warm-start, line search, and regularization adaptation
 - **Advanced Cost Functions**: 7 robust norm types (Quadratic, L2, L22, Cosh, SmoothAbsLoss, SmoothAbs2Loss, RectifyLoss)
-- **Model Linearization**: Built-in MuJoCo `mjd_transitionFD` for accurate dynamics derivatives (96% drift reduction!)
+- **Model Linearization**: Built-in MuJoCo `mjd_transitionFD` for accurate dynamics derivatives
 - **Quaternion-Aware**: Proper quaternion normalization and manifold-aware differentiation
 - **Hard Constraints**: Control limit handling via clamping (BoxQP support planned)
 - **Symbolic Derivatives**: CasADi-based cost derivatives for numerical stability
@@ -140,7 +140,7 @@ build\Release\humanoid_mpc.exe config_h1.yaml
 ```
 
 **Note for Windows Users:**
-- Always run commands in "Anaconda PowerShell Prompt" or "Anaconda Prompt" (not regular PowerShell)
+- Make sure the necessary environment is created and activated before running the code. Refer to environment.yml for all dependencies.
 - If `conda activate` doesn't work, use: `C:\Users\<YourUsername>\miniconda3\Scripts\activate.bat humanoid-mpc`
 - Make sure Visual Studio's C++ compiler is in PATH (installation should handle this)
 
@@ -656,7 +656,7 @@ robot:
 The code automatically adapts to state/control dimensions and body names.
 
 <details>
-<summary><h2>🔬 NLP-Based MPC Pipeline (Previous Implementation)</h2></summary>
+<summary><h2>🔬 NLP-Based MPC Pipeline (Uses external nlp solver and casadi for optimization)</h2></summary>
 
 The project includes an alternative **NLP-based MPC** implementation that uses direct trajectory optimization with the IPOPT solver. This is a cleaner, more modular architecture following software engineering best practices.
 

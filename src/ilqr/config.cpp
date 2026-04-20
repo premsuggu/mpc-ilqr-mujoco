@@ -79,10 +79,10 @@ Config loadConfigFromFile(const std::string& filepath) {
         config.mpc.costs.W_walk        = costs_node["W_walk"].as<double>(1.0);
         config.mpc.costs.speed_goal    = costs_node["speed_goal"].as<double>(0.0);
         
-        // Load constraints
-        auto constraints_node = mpc_node["constraints"];
-        config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();
-        config.mpc.torque_limit_weight = constraints_node["torque_limit_weight"].as<double>();
+        // // Load constraints       -        UPDATE: Removed soft constraints
+        // auto constraints_node = mpc_node["constraints"];
+        // config.mpc.joint_limit_weight = constraints_node["joint_limit_weight"].as<double>();
+        // config.mpc.torque_limit_weight = constraints_node["torque_limit_weight"].as<double>();
         
         // Load iLQR solver settings
         if (mpc_node["ilqr_settings"]) {

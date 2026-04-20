@@ -79,10 +79,6 @@ mpc:
       p: 0.5
       q: 3.0
 
-  constraints:
-    joint_limit_weight: 1500.0
-    torque_limit_weight: 1500.0
-
   ilqr_settings:
     initial_regularization: 1.0e-3
     max_iterations: 20
