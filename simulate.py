@@ -54,6 +54,7 @@ def select_model_for_trajectory(config_model_path, traj_nq):
         config_model_path,
         "robots/h1_description/mjcf/scene.xml",
         "robots/dm_humanoid/humanoid.xml",
+        "robots/g1_description/mjcf/scene_29dof.xml"
     ]
 
     checked = []

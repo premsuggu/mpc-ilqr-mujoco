@@ -42,10 +42,10 @@ def convert_pinocchio_to_mujoco(pinocchio_state):
 
 def main():
     # Parse command line arguments
-    csv_path = "data/q_T.csv"
-    output_path = "data/contact_T.csv"
+    csv_path = "data/h1/q_1foot.csv"
+    output_path = "data/h1/contact_1foot.csv"
     pinocchio_convention = False
-    save_mj_trajecotry = True
+    save_mj_trajecotry = False
     
     # Simple argument parsing
     if len(sys.argv) > 1:
@@ -69,7 +69,7 @@ def main():
                 print("  Convention: MuJoCo (use --pinocchio-convention if input is in Pinocchio format)")
                 return
     
-    model_path = "robots/dm_humanoid/humanoid.xml"
+    model_path = "robots/h1_description/mjcf/scene.xml"
     
     # Load model and data
     model = mujoco.MjModel.from_xml_path(model_path)

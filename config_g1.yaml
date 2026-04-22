@@ -1,19 +1,19 @@
 robot:
-  name: h1
-  model_path: "robots/h1_description/mjcf/scene.xml"
-  urdf_path: "robots/h1_description/urdf/h1.urdf"
+  name: g1
+  model_path: "robots/g1_description/mjcf/scene_29dof.xml"
+  urdf_path: "robots/g1_description/mjcf/g1_29dof.xml"
 
   ee_feet:
-    right_feet_ee: "right_ankle_link"
-    left_feet_ee: "left_ankle_link"
+    right_feet_ee: "right_ankle_roll_link"
+    left_feet_ee: "left_ankle_roll_link"
   pelvis_body_name: "pelvis"
   torso_body_name: "torso_link"
-  waist_lower_body_name: "torso_link"
+  waist_lower_body_name: "waist_roll_link"
 
 reference_trajectory:
-  q_ref: "data/h1/q_1foot.csv"
-  v_ref: "data/h1/standing/v_standing.csv"
-  contact_schedule: "data/h1/contact_1foot.csv"
+  q_ref: "data/g1/standing/q_standing.csv"
+  v_ref: "data/g1/standing/v_standing.csv"
+  contact_schedule: "data/g1/standing/contact_standing.csv"
 
 mpc:
   horizon: 25
@@ -29,15 +29,15 @@ mpc:
       terminal_weight: 100.0
 
     control:
-      R_control: 0.001
+      R_control: 0.01
 
     W_height: 100.0
-    W_vel: 10.0
+    W_vel: 0.0
     W_joint_vel: 0.1
     W_upright: 20.0
     w_balance: 30.0
     balance_time_constant: 0.2
-    W_pelvis_feet: 1.0
+    W_pelvis_feet: 0.0
     W_walk: 0.0
     speed_goal: 0.0
 
@@ -110,4 +110,4 @@ logging:
   results_path: "results"
 
 visualization:
-  enable_rerun: False
+  enable_rerun: false
