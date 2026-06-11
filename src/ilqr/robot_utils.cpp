@@ -996,10 +996,14 @@ void RobotUtils::computeGravComp(Eigen::VectorXd& ugrav) const {
     for (int i = 0; i < nu_; ++i) {
         // Map actuator index to joint index
         int joint_id = model_->actuator_trnid[i * 2];
-        int qpos_addr = model_->jnt_qposadr[joint_id];
+        int dof_addr = model_->jnt_dofadr[joint_id];
         
         // qfrc_bias contains gravity + Coriolis + centrifugal forces
-        ugrav(i) = temp_data->qfrc_bias[qpos_addr];
+        if (dof_addr >= 0 && dof_addr < model_->nv) {
+            ugrav(i) = temp_data->qfrc_bias[dof_addr];
+        } else {
+            ugrav(i) = 0.0;
+        }
     }
 }
 
